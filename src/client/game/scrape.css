@@ -1,0 +1,85 @@
+/* Scrape Mechanic */
+.scrape-warning {
+    position: absolute;
+    top: 40%;
+    font-size: 3rem;
+    font-weight: 900;
+    color: #d35400;
+    /* Darker orange/wood color */
+    text-shadow: 2px 2px 0 #000;
+    z-index: 20;
+    animation: blink 0.2s infinite;
+    pointer-events: none;
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.scrape-knife {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 20px;
+    /* Thin profile */
+    height: 100%;
+    z-index: 99999;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* The metallic blade */
+.scrape-knife::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            #bdc3c7 0%,
+            #ecf0f1 40%,
+            #bdc3c7 60%,
+            #95a5a6 100%);
+    box-shadow:
+        inset 1px 0 2px rgba(255, 255, 255, 0.8),
+        inset -1px 0 2px rgba(0, 0, 0, 0.3),
+        5px 0 15px rgba(0, 0, 0, 0.4);
+    /* Drop shadow */
+    border-radius: 2px;
+}
+
+/* The wooden handle at the top */
+.scrape-knife::after {
+    content: '';
+    position: absolute;
+    top: -10px;
+    /* Stick out slightly at top */
+    left: -10px;
+    /* Wider than blade */
+    width: 40px;
+    /* Wider handle */
+    height: 60px;
+    background: linear-gradient(90deg,
+            #8e44ad 0%,
+            /* Dark wood/resin */
+            #d35400 20%,
+            #e67e22 50%,
+            #d35400 80%,
+            #8e44ad 100%);
+    border-radius: 4px;
+    box-shadow:
+        0 2px 5px rgba(0, 0, 0, 0.5),
+        inset 0 0 10px rgba(0, 0, 0, 0.3);
+    border-bottom: 2px solid #5e3023;
+}

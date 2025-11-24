@@ -1,0 +1,52 @@
+/* Green Baron with Banner */
+.airplane {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 256px;
+    /* Much wider for banner */
+    height: 64px;
+    background-image: url('./airplane.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    /* Removed image-rendering: pixelated for smooth vector look */
+    z-index: 20;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+    /* Adjusted shadow */
+    pointer-events: none;
+    display: none;
+    /* Controlled by JS */
+}
+
+/* Explicit Left-to-Right Flight (7s duration) */
+.airplane.fly-ltr {
+    display: block;
+    animation: fly-ltr 7s linear forwards;
+}
+
+/* Explicit Right-to-Left Flight (4s duration) */
+.airplane.fly-rtl {
+    display: block;
+    animation: fly-rtl 4s linear forwards;
+}
+
+@keyframes fly-ltr {
+    0% {
+        left: -300px;
+    }
+
+    100% {
+        left: 100%;
+    }
+}
+
+@keyframes fly-rtl {
+    0% {
+        left: 100%;
+    }
+
+    100% {
+        left: -300px;
+    }
+}

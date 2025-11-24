@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, height=device-height, user-scalable=0" />
+  <title>devvit</title>
+</head>
+
+<body class="app">
+  <div class="game-container">
+    <div class="hud">
+      <div class="score-box">
+        <div class="label">SCORE</div>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="day-box">
+        <div class="label">DAY</div>
+        <div class="value" id="day">1</div>
+      </div>
+      <div class="combo-box">
+        <div class="label">COMBO</div>
+        <div class="value" id="combo">0</div>
+      </div>
+      <div style="position: absolute; bottom: 5px; right: 5px; font-size: 0.6rem; color: rgba(255,255,255,0.3);">
+        v0.0.104</div>
+    </div>
+
+    <!-- Walking Chef -->
+    <div class="chef-container">
+      <div class="chef chef-1" id="chef-1">
+        <div class="pixel-chef">
+          <div class="chef-hat-pixel"></div>
+          <div class="chef-head"></div>
+          <div class="chef-body"></div>
+          <div class="chef-legs"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kitchen-counter">
+      <div class="cutting-board" id="cutting-board-container">
+        <div class="lane" id="lane-0">
+        </div>
+        <div class="lane" id="lane-1">
+        </div>
+        <div class="lane" id="lane-2">
+        </div>
+        <div class="cut-line"></div>
+
+        <!-- Stack inside 3D scene for obstruction -->
+        <div class="stack-container-3d" id="chive-stack"></div>
+      </div>
+
+
+
+
+      <div class="knife-container" id="knife">
+        🔪
+      </div>
+
+      <!-- Dedicated Overlay for Scrape Visual -->
+      <!-- Placed here to be above board but below UI -->
+      <div id="scrape-overlay"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50;">
+      </div>
+
+      <div class="airplane" id="airplane"></div>
+      <div class="easter-egg-zone" id="easter-egg-zone"></div>
+      <div id="particles-container"></div>
+    </div>
+
+
+
+
+    <div class="day-transition-overlay hidden" id="day-transition-overlay">
+      <h2 id="transition-day-text">DAY 2</h2>
+    </div>
+
+    <div class="controls-overlay" id="controls-overlay">
+      <div
+        style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%;">
+        <h1 style="text-align: center;">Chive Cutter</h1>
+        <p style="text-align: center; color: #2ecc71; margin-bottom: 5px; font-weight: bold;">Hit the correct key when
+          the chive lands on the cut line</p>
+
+        <p style="text-align: center; font-size: 0.9rem; margin-top: 10px; color: #ddd;">
+          Press <span class="keycap">A</span> <span class="keycap">S</span> <span class="keycap">D</span> or tap lanes
+        </p>
+
+        <button id="start-button">START DAY 1</button>
+      </div>
+
+      <p id="practice-day-text"
+        style="text-align: center; font-size: 1.2rem; line-height: 1.4; color: #ccc; margin: 0 auto 15px auto; font-style: italic; max-width: 90%;">
+        Cutting a couple of chives every day until r/KitchenConfidential says they're perfect.</p>
+
+      <div class="splash-footer">An unofficial mini-game for r/KitchenConfidential</div>
+    </div>
+
+    <div class="mobile-controls">
+      <button class="mobile-btn" data-key="a">A</button>
+      <button class="mobile-btn" data-key="s">S</button>
+      <button class="mobile-btn" data-key="d">D</button>
+    </div>
+  </div>
+
+  <script type="module" src="game/game.ts" defer></script>
+</body>
+
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knife Rack Selection</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .knife-rack {
+            display: flex;
+            gap: 40px;
+            padding: 40px;
+            background: linear-gradient(145deg, #2a2a2a, #1f1f1f);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .knife-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 30px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .knife-option:hover {
+            transform: translateY(-10px);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(255, 255, 255, 0.1);
+        }
+
+        .knife-option.unlocked {
+            border-color: #4ade80;
+        }
+
+        .knife-option.locked {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .knife-icon {
+            font-size: 80px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+            transition: all 0.3s ease;
+        }
+
+        .knife-option:hover .knife-icon {
+            transform: scale(1.1);
+        }
+
+        /* Specific knife styles */
+        .knife-option[data-knife="chef"] .knife-icon {
+            filter: drop-shadow(0 4px 8px rgba(200, 200, 200, 0.5));
+        }
+
+        .knife-option[data-knife="scissors"] .knife-icon {
+            filter: drop-shadow(0 4px 8px rgba(180, 180, 200, 0.5));
+        }
+
+        .knife-option[data-knife="cleaver"] .knife-icon {
+            filter: drop-shadow(0 4px 8px rgba(139, 69, 19, 0.5));
+        }
+
+        .knife-option[data-knife="energy"] .knife-icon {
+            animation: glow 2s ease-in-out infinite;
+            filter: drop-shadow(0 0 20px rgba(0, 200, 255, 0.8));
+        }
+
+        .knife-option[data-knife="katana"] .knife-icon {
+            filter: drop-shadow(0 4px 8px rgba(220, 220, 220, 0.5));
+        }
+
+        @keyframes glow {
+
+            0%,
+            100% {
+                filter: drop-shadow(0 0 20px rgba(0, 200, 255, 0.8));
+            }
+
+            50% {
+                filter: drop-shadow(0 0 30px rgba(0, 255, 255, 1));
+            }
+        }
+
+        .knife-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .knife-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .knife-unlock {
+            font-size: 12px;
+            color: #888;
+            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+        }
+
+        .knife-option.unlocked .knife-unlock {
+            color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        .knife-option.selected {
+            border-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.1);
+        }
+
+        .knife-option.selected::before {
+            content: '✓';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: #fbbf24;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        h1 {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Choose Your Weapon</h1>
+
+    <div class="knife-rack">
+        <!-- Chef's Knife (Default - Always Unlocked) -->
+        <div class="knife-option unlocked selected" data-knife="chef" data-day="0">
+            <div class="knife-icon">🔪</div>
+            <div class="knife-label">
+                <span class="knife-name">Chef's Knife</span>
+                <span class="knife-unlock">Default</span>
+            </div>
+        </div>
+
+        <!-- Scissors -->
+        <div class="knife-option locked" data-knife="scissors" data-day="2">
+            <div class="knife-icon">✂️</div>
+            <div class="knife-label">
+                <span class="knife-name">Scissors</span>
+                <span class="knife-unlock">Day 2</span>
+            </div>
+        </div>
+
+        <!-- Cleaver -->
+        <div class="knife-option locked" data-knife="cleaver" data-day="4">
+            <div class="knife-icon">🪓</div>
+            <div class="knife-label">
+                <span class="knife-name">Cleaver</span>
+                <span class="knife-unlock">Day 4</span>
+            </div>
+        </div>
+
+        <!-- Energy Sword -->
+        <div class="knife-option locked" data-knife="energy" data-day="6">
+            <div class="knife-icon">⚔️</div>
+            <div class="knife-label">
+                <span class="knife-name">Energy Sword</span>
+                <span class="knife-unlock">Day 6</span>
+            </div>
+        </div>
+
+        <!-- Katana -->
+        <div class="knife-option locked" data-knife="katana" data-day="8">
+            <div class="knife-icon">🗡️</div>
+            <div class="knife-label">
+                <span class="knife-name">Katana</span>
+                <span class="knife-unlock">Day 8</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simple demo interaction
+        const knives = document.querySelectorAll('.knife-option');
+
+        knives.forEach(knife => {
+            knife.addEventListener('click', () => {
+                if (!knife.classList.contains('locked')) {
+                    knives.forEach(k => k.classList.remove('selected'));
+                    knife.classList.add('selected');
+                    console.log('Selected:', knife.dataset.knife);
+                }
+            });
+        });
+
+        // Example: Unlock based on day (for demo purposes)
+        function unlockKnivesUpToDay(currentDay) {
+            knives.forEach(knife => {
+                const unlockDay = parseInt(knife.dataset.day);
+                if (currentDay >= unlockDay) {
+                    knife.classList.remove('locked');
+                    knife.classList.add('unlocked');
+                }
+            });
+        }
+
+        // Demo: Unlock all for testing (comment out in production)
+        // unlockKnivesUpToDay(10);
+    </script>
+</body>
+
+</html>

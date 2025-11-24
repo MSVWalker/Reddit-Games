@@ -1,0 +1,211 @@
+/* Powerup Items */
+/* Powerup Items */
+.chive.powerup-ice,
+.chive.powerup-rage,
+.chive.powerup-slam {
+    background-color: transparent !important;
+    /* Remove colored circle */
+    box-shadow: none !important;
+    /* Remove glow */
+    border-radius: 0 !important;
+    width: 60px !important;
+    /* Bigger size */
+    height: 60px !important;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    transform: translate(-15px, -15px);
+    /* Center adjustment for larger size */
+}
+
+.chive.powerup-ice {
+    background-image: var(--img-freeze);
+}
+
+.chive.powerup-rage {
+    background-image: var(--img-rage);
+}
+
+.chive.powerup-slam {
+    background-image: var(--img-slam);
+}
+
+/* Remove emoji content and GLOW */
+.chive.powerup-ice::after,
+.chive.powerup-rage::after,
+.chive.powerup-slam::after,
+.chive.powerup-ice::before,
+.chive.powerup-rage::before,
+.chive.powerup-slam::before {
+    content: none !important;
+}
+
+/* Powerup Effects */
+.powerup-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 5;
+}
+
+.effect-ice {
+    background: none;
+    box-shadow: none;
+}
+
+.effect-rage {
+    background: none;
+    box-shadow: none;
+}
+
+.rage-text {
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 3rem;
+    font-weight: bold;
+    color: #e74c3c;
+    text-shadow: 0 0 10px #fff;
+    animation: pulse 0.5s infinite;
+    z-index: 10;
+}
+
+.ice-text {
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 3rem;
+    font-weight: bold;
+    color: #3498db;
+    text-shadow: 0 0 10px #fff;
+    z-index: 10;
+}
+
+@keyframes slam-shake {
+    0% {
+        transform: translate(0, 0);
+    }
+
+    25% {
+        transform: translate(-10px, 10px);
+    }
+
+    50% {
+        transform: translate(10px, -10px);
+    }
+
+    75% {
+        transform: translate(-10px, -10px);
+    }
+
+    100% {
+        transform: translate(0, 0);
+    }
+}
+
+.slam-effect {
+    animation: slam-shake 0.5s ease-out;
+}
+
+/* Projectiles */
+@keyframes spin {
+    0% {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    100% {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+.projectile-knife {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    font-size: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: spin 0.2s linear infinite;
+    z-index: 10;
+}
+
+/* Knife-Specific Animations */
+
+/* Chef's Knife - Standard */
+.knife-chef {
+    filter: drop-shadow(0 0 4px rgba(200, 200, 200, 0.6));
+}
+
+/* Scissors - Snipping Animation */
+.knife-scissors {
+    animation: scissors-snip 0.3s ease-in-out infinite, spin 0.2s linear infinite;
+    filter: drop-shadow(0 0 4px rgba(180, 180, 220, 0.6));
+}
+
+@keyframes scissors-snip {
+
+    0%,
+    100% {
+        transform: rotate(0deg) scale(1) translate(-50%, -50%);
+    }
+
+    50% {
+        transform: rotate(15deg) scale(1.1) translate(-50%, -50%);
+    }
+}
+
+/* Cleaver - Heavy */
+.knife-cleaver {
+    font-size: 35px;
+    filter: drop-shadow(0 0 6px rgba(139, 69, 19, 0.8));
+}
+
+/* Energy Sword - Glowing */
+.knife-energy {
+    animation: energy-glow 0.5s ease-in-out infinite alternate, spin 0.2s linear infinite;
+    filter: drop-shadow(0 0 12px rgba(0, 200, 255, 1)) drop-shadow(0 0 20px rgba(0, 255, 255, 0.8));
+}
+
+@keyframes energy-glow {
+    from {
+        filter: drop-shadow(0 0 12px rgba(0, 200, 255, 1)) drop-shadow(0 0 20px rgba(0, 255, 255, 0.8));
+    }
+
+    to {
+        filter: drop-shadow(0 0 20px rgba(0, 255, 255, 1)) drop-shadow(0 0 30px rgba(0, 200, 255, 1));
+    }
+}
+
+/* Katana - Fast Slash */
+.knife-katana {
+    animation: katana-slash 0.2s linear infinite, spin 0.15s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(220, 20, 60, 0.8)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+@keyframes katana-slash {
+    0% {
+        transform: rotate(0deg) translateX(0) translate(-50%, -50%);
+    }
+
+    25% {
+        transform: rotate(-10deg) translateX(-2px) translate(-50%, -50%);
+    }
+
+    75% {
+        transform: rotate(10deg) translateX(2px) translate(-50%, -50%);
+    }
+
+    100% {
+        transform: rotate(0deg) translateX(0) translate(-50%, -50%);
+    }
+}

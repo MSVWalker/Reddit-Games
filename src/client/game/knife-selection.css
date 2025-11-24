@@ -1,0 +1,113 @@
+/* Knife Selection UI */
+.knife-selection {
+    margin: 15px 0 20px 0;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 15px;
+}
+
+.knife-selection h2 {
+    text-align: center;
+    color: #fff;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.knife-rack {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.knife-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 40px;
+    max-width: 48px;
+}
+
+.knife-option:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.knife-option.unlocked {
+    border-color: rgba(74, 222, 128, 0.4);
+}
+
+.knife-option.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(1);
+}
+
+.knife-option.locked:hover {
+    transform: none;
+}
+
+.knife-option.selected {
+    border-color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+    position: relative;
+}
+
+.knife-option.selected::before {
+    content: '✓';
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    color: #fbbf24;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.knife-icon {
+    font-size: 22px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    transition: transform 0.2s ease;
+}
+
+.knife-option:hover .knife-icon {
+    transform: scale(1.05);
+}
+
+.knife-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.knife-name {
+    font-size: 7px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.knife-unlock {
+    font-size: 6px;
+    color: #888;
+    padding: 2px 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.knife-option.unlocked .knife-unlock {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+}
