@@ -559,10 +559,17 @@ body {
 .knife-container {
   position: absolute;
   bottom: 60px;
+  left: 50%;
+  width: 85px;
+  /* Fixed width for centering */
+  margin-left: -42.5px;
+  /* Center it */
+  text-align: center;
   font-size: 5rem;
   pointer-events: none;
   transition: transform 0.05s;
-  z-index: 20;
+  z-index: 60;
+  /* Increased to be above mobile controls (50) */
   filter: drop-shadow(0 10px 10px rgba(0, 0, 0, 0.5));
 }
 
@@ -577,6 +584,91 @@ body {
   z-index: 15;
   /* Below chives but above background */
   overflow: visible;
+}
+
+/* ... (skipping unchanged lines) ... */
+
+.mobile-controls {
+  display: flex;
+  /* Always show for mobile-first */
+  position: absolute;
+  bottom: 30px;
+  /* Reverted */
+  width: 100%;
+  justify-content: center;
+  gap: 30px;
+  z-index: 50;
+}
+
+.mobile-btn {
+  width: 80px;
+  /* Reverted */
+  height: 80px;
+  /* Reverted */
+  border-radius: 50%;
+  background: rgba(46, 204, 113, 0.2);
+  border: 3px solid rgba(46, 204, 113, 0.8);
+  color: white;
+  font-size: 2rem;
+  /* Reverted */
+  font-weight: bold;
+  padding: 0;
+  backdrop-filter: blur(5px);
+  animation: none;
+  margin: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition: all 0.1s;
+}
+
+.mobile-btn:active {
+  transform: scale(0.9);
+  background: rgba(46, 204, 113, 0.4);
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .key-hint {
+    font-size: 1.5rem;
+    gap: 60px;
+  }
+
+  /* Reverted: Removed .mobile-controls bottom adjustment */
+
+  .mobile-btn {
+    width: 70px;
+    /* Reverted */
+    height: 70px;
+    /* Reverted */
+    font-size: 1.8rem;
+    /* Reverted */
+  }
+}
+
+/* Stack inside cutting board - Mobile First */
+.stack-container-3d {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+  /* Below chives but above background */
+  overflow: visible;
+}
+
+.projectile-container {
+  position: absolute;
+  width: 300px;
+  height: 110%;
+  left: 50%;
+  margin-left: -150px;
+  /* Center 300px content */
+  transform: rotateX(30deg) translateY(-20px);
+  /* Match cutting board */
+  z-index: 60;
+  /* Above mobile controls (50) */
+  pointer-events: none;
 }
 
 .stack-piece {
@@ -1081,6 +1173,16 @@ body {
   margin: 0;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
   transition: all 0.1s;
+}
+
+/* Smaller font */
+font-weight: bold;
+padding: 0;
+backdrop-filter: blur(5px);
+animation: none;
+margin: 0;
+box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+transition: all 0.1s;
 }
 
 .mobile-btn:active {

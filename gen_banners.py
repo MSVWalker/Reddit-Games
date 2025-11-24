@@ -197,7 +197,7 @@ def create_banner_plane(text, filename_base, direction='ltr'):
 # HARDCODED EXECUTION
 print("Running hardcoded generation...")
 banners = [
-    ("F1exican Did Chive-11", "airplane_banner_1"),
+    ("Jet Fuel Can't Melt Chives", "airplane_banner_1"),
     ("Forgive But Never Forget", "airplane_banner_2"),
     ("Chive On!", "airplane_banner_3"),
     ("Stay Sharp!", "airplane_banner_4"),

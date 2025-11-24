@@ -25,10 +25,13 @@ import banner10Rtl from './airplane_banner_10_rtl.png';
 import powerupFreeze from './powerup_freeze.png';
 import powerupRage from './powerup_rage.png';
 import powerupSlam from './powerup_slam.png';
+// Weapon Images
+import knifeScythe from './knife_scythe.png';
+import knifeKatana from './knife_katana.png';
 
 // Map banners for easy access
 const BANNER_IMAGES = [
-  { ltr: banner1Ltr, rtl: banner1Rtl }, // F1exican Did Chive-11
+  { ltr: banner1Ltr, rtl: banner1Rtl }, // Jet Fuel Can't Melt Chives
   { ltr: banner2Ltr, rtl: banner2Rtl }, // Forgive But Never Forget
   { ltr: banner3Ltr, rtl: banner3Rtl }, // Chive On!
   { ltr: banner4Ltr, rtl: banner4Rtl }, // Stay Sharp!
@@ -118,6 +121,7 @@ const eggZone = document.getElementById('easter-egg-zone')!;
 const particlesEl = document.getElementById('particles-container')!;
 const gameContainer = document.querySelector('.game-container')!;
 const stackEl = document.getElementById('chive-stack')!;
+const projectileContainer = document.getElementById('projectile-container')!;
 
 let chives: Chive[] = [];
 let projectiles: Projectile[] = [];
@@ -137,6 +141,27 @@ const DIFFICULTY = {
 };
 
 const HIT_WINDOW = DIFFICULTY.HIT_WINDOW;
+
+// --- PRELOAD ASSETS ---
+function preloadImages() {
+  const images = [
+    powerupFreeze, powerupRage, powerupSlam,
+    knifeScythe, knifeKatana,
+    banner1Ltr, banner1Rtl, banner2Ltr, banner2Rtl,
+    banner3Ltr, banner3Rtl, banner4Ltr, banner4Rtl,
+    banner6Ltr, banner6Rtl, banner8Ltr, banner8Rtl,
+    banner9Ltr, banner9Rtl, banner10Ltr, banner10Rtl
+  ];
+
+  images.forEach(src => {
+    const img = new Image();
+    img.src = src;
+  });
+  console.log('[Game] Preloading images...');
+}
+
+// Start preloading immediately
+preloadImages();
 
 interface State {
   score: number;
@@ -224,23 +249,25 @@ const KNIVES = {
   cleaver: {
     emoji: '🪓',
     name: 'Cleaver',
-    unlockDay: 4,
+    unlockDay: 3,
     speed: 600,
     hitbox: 70,
     cssClass: 'knife-cleaver'
   },
-  energy: {
-    emoji: '⚔️',
-    name: 'Energy Sword',
-    unlockDay: 6,
+  scythe: {
+    emoji: '⚔️', // Fallback
+    image: knifeScythe,
+    name: 'Scythe',
+    unlockDay: 4,
     speed: 2000,
     hitbox: 50,
-    cssClass: 'knife-energy'
+    cssClass: 'knife-scythe'
   },
   katana: {
-    emoji: '🗡️',
+    emoji: '🗡️', // Fallback
+    image: knifeKatana,
     name: 'Katana',
-    unlockDay: 8,
+    unlockDay: 5,
     speed: 1500,
     hitbox: 50,
     cssClass: 'knife-katana'
@@ -482,7 +509,7 @@ function buildKnifeSelectionUI(): string {
 
     html += `
       <div class="knife-option ${isUnlocked ? 'unlocked' : 'locked'} ${isSelected ? 'selected' : ''}" data-knife="${id}">
-        <div class="knife-icon">${knife.emoji}</div>
+        <div class="knife-icon" style="${(knife as any).image ? `background-image: url(${(knife as any).image}); background-size: contain; background-repeat: no-repeat; background-position: center; color: transparent;` : ''}">${knife.emoji}</div>
         <div class="knife-label">
           <span class="knife-name">${knife.name}</span>
           <span class="knife-unlock">${isUnlocked ? unlockText : `🔒 ${unlockText}`}</span>
@@ -526,7 +553,21 @@ function setupKnifeSelection() {
 function updateKnifeVisual() {
   const knife = KNIVES[state.selectedKnife as keyof typeof KNIVES];
   if (knife) {
-    knifeEl.textContent = knife.emoji;
+    if ((knife as any).image) {
+      knifeEl.textContent = '';
+      knifeEl.style.backgroundImage = `url(${(knife as any).image})`;
+      knifeEl.style.backgroundSize = 'contain';
+      knifeEl.style.backgroundRepeat = 'no-repeat';
+      knifeEl.style.backgroundPosition = 'center';
+      knifeEl.style.width = '85px'; // Resized to 85px
+      knifeEl.style.height = '85px';
+    } else {
+      knifeEl.style.backgroundImage = 'none';
+      knifeEl.textContent = knife.emoji;
+      knifeEl.style.fontSize = '5rem'; // Match CSS default
+      knifeEl.style.width = ''; // Reset width
+      knifeEl.style.height = ''; // Reset height
+    }
   }
 }
 
@@ -962,67 +1003,66 @@ function updateScrape(dt: number) {
   if (!scrapeKnife) return;
 
   try {
-    const speed = 0.3125; // Increased by 25% (was 0.25)
+    const speed = 0.625; // Doubled speed (was 0.3125)
 
-    // Get board dimensions for syncing
-    const cuttingBoard = document.getElementById('cutting-board-container');
-    if (!cuttingBoard) return;
-
-    const boardRect = cuttingBoard.getBoundingClientRect();
-    const containerRect = gameContainer.getBoundingClientRect();
-
-    // Calculate relative position of board within game container
-    const boardLeft = boardRect.left - containerRect.left;
-    const boardWidth = boardRect.width;
-
-    // Move Knife (always right for now)
+    // Move Knife (Always Left -> Right)
     scrapeKnife.x += speed * dt;
-
-    // Apply Transform
-    // Since we are using fixed positioning on body, we just translate X
     scrapeKnife.element.style.transform = `translateX(${scrapeKnife.x}px)`;
 
-    // DEBUG: Log every 20 frames
-    if (Math.random() < 0.05) {
-      console.log(`[Scrape] Knife X: ${scrapeKnife.x.toFixed(2)}`);
+    // Use cached board dimensions
+    const boardWidth = scrapeKnife.boardWidth;
+
+    // Animate Debris Push Container (Slide Right with knife)
+    if (scrapeKnife.debrisContainer) {
+      // Only apply if knife is ON the board
+      if (scrapeKnife.x > 0 && scrapeKnife.x < boardWidth) {
+        // Push debris container to the right
+        scrapeKnife.debrisContainer.style.transform = `translateX(${scrapeKnife.x}px)`;
+      }
     }
 
-    // Simple Coordinate-based Clearing
+    // 1. Clear Active Chives (Collision Window)
+    const knifeWidth = 50;
     const knifeX = scrapeKnife.x;
 
-    // 1. Clear Active Chives
     for (let i = chives.length - 1; i >= 0; i--) {
       const chive = chives[i];
       if (!chive) continue;
 
-      const laneWidth = boardRect.width / 3;
+      const laneWidth = boardWidth / 3;
       const chiveX = (chive.lane * laneWidth) + (laneWidth / 2);
 
-      if (knifeX > chiveX) {
+      // Check collision (Left -> Right)
+      // Hit if knife passed chive but is close
+      if (knifeX > chiveX && knifeX < chiveX + knifeWidth) {
         chive.element.remove();
         chives.splice(i, 1);
+
+        // Add particle effect for satisfaction
+        const rect = chive.element.getBoundingClientRect();
+        spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, '#2ecc71');
       }
     }
 
-    // 2. Clear Debris when knife reaches the END of the board
-    // This ensures it cleans everything it passed over
-    if (knifeX > boardRect.width && knifeX < boardRect.width + (speed * dt * 2)) {
-      stackEl.innerHTML = '';
-    }
+    // 2. Clear Debris & Reset
+    if (scrapeKnife.x > boardWidth + 100) {
+      console.log('[Scrape] Knife finished.');
 
-    // Remove knife when WAY off-screen (very generous)
-    if (scrapeKnife.x > boardRect.width + 500) {
-      console.log('[Scrape] Knife finished, removing.');
+      // Remove temporary debris container
+      if (scrapeKnife.debrisContainer) {
+        scrapeKnife.debrisContainer.remove();
+      }
+
       scrapeKnife.element.remove();
       scrapeKnife = null;
 
-      // Toggle direction for next time
-      state.scrapeDirection = state.scrapeDirection === 'left' ? 'right' : 'left';
+      // No direction toggle needed (Always Left->Right)
     }
+
   } catch (e) {
     console.error("Scrape error:", e);
-    // Fail safe: remove knife
     if (scrapeKnife && scrapeKnife.element) scrapeKnife.element.remove();
+    if (scrapeKnife && scrapeKnife.debrisContainer) scrapeKnife.debrisContainer.remove();
     scrapeKnife = null;
   }
 }
@@ -1032,9 +1072,9 @@ function showScrapeWarning() {
   const warning = document.createElement('div');
   warning.id = 'scrape-warning';
   warning.className = 'scrape-warning';
-  warning.textContent = state.scrapeDirection === 'left' ? '▶ SCRAPE!' : 'SCRAPE! ◀';
-  warning.style.left = state.scrapeDirection === 'left' ? '10%' : 'auto';
-  warning.style.right = state.scrapeDirection === 'left' ? 'auto' : '10%';
+  warning.textContent = '▶ SCRAPE!'; // Always Left -> Right
+  warning.style.left = '10%';
+  warning.style.right = 'auto';
   gameContainer.appendChild(warning);
 
   setTimeout(() => warning.remove(), 2000);
@@ -1048,30 +1088,26 @@ function spawnScrapeKnife() {
   el.className = 'scrape-knife';
   // Pure CSS visual now - no background image needed
 
-  // Force load powerup images by creating hidden img tags (hack to ensure Vite bundles them if not used in JS directly)
-  // Actually, we can just set them as CSS variables on the root or game container
-  gameContainer.style.setProperty('--img-freeze', `url(${powerupFreeze})`);
-  gameContainer.style.setProperty('--img-rage', `url(${powerupRage})`);
-  gameContainer.style.setProperty('--img-slam', `url(${powerupSlam})`);
+  // Pure CSS visual now - no background image needed
 
-  // Append DIRECTLY TO BODY to guarantee it's on top of everything
-  // and bypasses all container overflow/3D issues
+  // Append DIRECTLY TO BODY
   document.body.appendChild(el);
 
   const cuttingBoard = document.getElementById('cutting-board-container');
+  let boardWidth = 500; // Default fallback
+
   if (cuttingBoard) {
     const rect = cuttingBoard.getBoundingClientRect();
+    boardWidth = rect.width;
 
     // Position exactly over the board
-    el.style.position = 'fixed'; // Use fixed to ignore scroll
+    el.style.position = 'fixed';
     el.style.top = `${rect.top}px`;
     el.style.left = `${rect.left}px`;
     el.style.height = `${rect.height}px`;
-    el.style.zIndex = '99999'; // Max z-index
-
-    console.log('[Scrape] Appended to BODY. Fixed position:', rect);
+    el.style.zIndex = '99999';
   } else {
-    console.error('[Scrape] Cutting board NOT FOUND! positioning at 0,0');
+    // Fallback positioning
     el.style.position = 'fixed';
     el.style.top = '100px';
     el.style.left = '0px';
@@ -1079,25 +1115,43 @@ function spawnScrapeKnife() {
     el.style.zIndex = '99999';
   }
 
-  // SIMPLIFIED: Always start at left side (x=0) and move right
-  // This ensures it's always visible on-screen
+  // Determine Start X (Always 0 for Left->Right)
   const startX = 0;
 
-  console.log(`[Scrape] SIMPLIFIED MODE - StartX: ${startX}`);
+  console.log(`[Scrape] Spawning Left->Right at X:${startX}`);
+
+  // Create temporary debris container for animation
+  let debrisContainer: HTMLElement | null = null;
+  if (stackEl && stackEl.children.length > 0) {
+    debrisContainer = document.createElement('div');
+    debrisContainer.className = 'debris-push-container';
+    // Match stackEl styling/position
+    debrisContainer.style.position = 'absolute';
+    debrisContainer.style.top = '0';
+    debrisContainer.style.left = '0';
+    debrisContainer.style.width = '100%';
+    debrisContainer.style.height = '100%';
+    debrisContainer.style.pointerEvents = 'none';
+
+    // Move all current debris to this container
+    while (stackEl.firstChild) {
+      debrisContainer.appendChild(stackEl.firstChild);
+    }
+
+    stackEl.appendChild(debrisContainer);
+  }
 
   scrapeKnife = {
     element: el,
     x: startX,
-    direction: 'left' // Always left-to-right for now
+    direction: 'left',
+    boardWidth: boardWidth, // Cache this!
+    debrisContainer: debrisContainer
   };
 
-  // CRITICAL: Apply initial position to make it visible!
+  // Apply initial position
   el.style.transform = `translateX(${startX}px)`;
-  el.style.left = '0px'; // Ensure it's at the left edge
 
-  // DEBUG: Confirm element is in DOM
-  console.log(`[Scrape] Element appended. Parent:`, gameContainer, 'Element:', el);
-  console.log(`[Scrape] Element computed style - zIndex:`, window.getComputedStyle(el).zIndex, ' background:', window.getComputedStyle(el).background.substring(0, 50));
   console.log(`[Scrape] Element in DOM:`, document.body.contains(el));
   console.log(`[Scrape] Element position:`, el.getBoundingClientRect());
 }
@@ -1137,9 +1191,23 @@ function cut(lane: Lane) {
 
     const el = document.createElement('div');
     el.className = `projectile-knife ${knife.cssClass}`;
-    el.textContent = knife.emoji;
+
+    if ((knife as any).image) {
+      el.style.backgroundImage = `url(${(knife as any).image})`;
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.backgroundPosition = 'center';
+      el.textContent = '';
+    } else {
+      el.textContent = knife.emoji;
+    }
     el.style.top = `${startY}px`;
-    laneEl.appendChild(el);
+
+    // Position based on lane (0, 1, 2) -> 16.66%, 50%, 83.33%
+    const leftPercent = (lane * 33.33) + 16.66;
+    el.style.left = `${leftPercent}%`;
+
+    projectileContainer.appendChild(el);
 
     projectiles.push({
       id: nextId++,
@@ -1284,9 +1352,8 @@ function nextDay() {
   // Add 1s pause (no chives) after each day
   state.spawnTimer = -1000;
 
-  // Trigger Scrape on Day 2 (Dev) and every 5 days (Day 5, 10, 15...)
-  // Trigger Scrape on Day 2 (Dev) and every 5 days (Day 5, 10, 15...)
-  if (state.day === 2 || state.day % 5 === 0) {
+  // Trigger Scrape every 5 days (Day 5, 10, 15...)
+  if (state.day % 5 === 0) {
     // Delay scrape slightly so it happens during the transition
     // Use State-Based Timer instead of setTimeout
     showScrapeWarning();
@@ -1334,7 +1401,14 @@ async function startGame() {
   // Clear existing
   chives.forEach(c => c.element.remove());
   chives = [];
+  projectiles = []; // Clear projectiles
   stackEl.innerHTML = '';
+  projectileContainer.innerHTML = '';
+
+  // Set CSS variables for powerups (Fix for invisible powerups)
+  gameContainer.style.setProperty('--img-freeze', `url(${powerupFreeze})`);
+  gameContainer.style.setProperty('--img-rage', `url(${powerupRage})`);
+  gameContainer.style.setProperty('--img-slam', `url(${powerupSlam})`);
 
   overlay.classList.add('hidden');
 
