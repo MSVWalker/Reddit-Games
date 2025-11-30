@@ -12,6 +12,7 @@ import {
   redis,
 } from "@devvit/web/server";
 import { createPost } from "./core/post";
+import * as analytics from "./lib/analytics";
 
 const app = express();
 
@@ -103,6 +104,48 @@ router.post<
   });
 });
 
+// Admin Analytics Endpoint (Protected)
+router.get("/api/admin-stats", async (_req, res): Promise<void> => {
+  try {
+    // Get current user
+    const username = await reddit.getCurrentUsername();
+
+    // Admin username (case-insensitive)
+    const ADMIN_USERNAME = 'PangaeaNative';
+
+    console.log('[Admin Stats] Detected username:', username);
+    console.log('[Admin Stats] Expected username:', ADMIN_USERNAME);
+
+    if (username?.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
+      res.status(403).json({
+        status: "error",
+        message: "Unauthorized - Admin only",
+        debug: `Detected user: ${username}, Expected: ${ADMIN_USERNAME}` // Remove this in production
+      });
+      return;
+    }
+
+    // Fetch all analytics
+    const [userRetention, activeUsers, gameMetrics, featureStats] = await Promise.all([
+      analytics.getUserRetentionStats(),
+      analytics.getActiveUserStats(),
+      analytics.getGameMetrics(),
+      analytics.getFeatureStats(),
+    ]);
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      userRetention,
+      activeUsers,
+      gameMetrics,
+      featureStats,
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error);
+    res.status(500).json({ status: "error", message: "Failed to fetch stats" });
+  }
+});
+
 // Leaderboard endpoints
 router.post("/api/submit-score", async (req, res): Promise<void> => {
   const { postId, userId } = context;
@@ -112,7 +155,8 @@ router.post("/api/submit-score", async (req, res): Promise<void> => {
   }
 
   try {
-    const { score, day } = req.body as { score: number; day: number };
+    const { score, day, mode } = req.body as { score: number; day: number; mode?: string };
+    const gameMode = mode || 'classic'; // Default to classic for backward compatibility
 
     // Validate score (basic anti-cheat)
     if (!score || score < 0 || score > day * 1000) {
@@ -120,29 +164,29 @@ router.post("/api/submit-score", async (req, res): Promise<void> => {
       return;
     }
 
-    // Get current personal best
-    const currentBestStr = await redis.get(`user:${userId}:best:v3`);
+    // Get current personal best for this mode
+    const currentBestStr = await redis.get(`user:${userId}:best:${gameMode}:v3`);
     const currentBest = currentBestStr ? parseInt(currentBestStr) : 0;
     const isNewBest = score > currentBest;
 
     // Update personal best if needed
     if (isNewBest) {
-      await redis.set(`user:${userId}:best:v3`, score.toString());
-      await redis.set(`user:${userId}:day:v3`, day.toString());
+      await redis.set(`user:${userId}:best:${gameMode}:v3`, score.toString());
+      await redis.set(`user:${userId}:day:${gameMode}:v3`, day.toString());
 
-      // Update leaderboard (sorted set by score)
-      await redis.zAdd("leaderboard:global:v3", {
+      // Update leaderboard (sorted set by score) - mode-specific
+      await redis.zAdd(`leaderboard:global:${gameMode}:v3`, {
         member: userId,
         score: score,
       });
     }
 
-    // --- DAILY LEADERBOARD LOGIC (runs every game) ---
+    // --- DAILY LEADERBOARD LOGIC (runs every game) - mode-specific ---
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const dailyKey = `leaderboard:daily:${today}:v3`;
+    const dailyKey = `leaderboard:daily:${today}:${gameMode}:v3`;
 
     // Check if this is a new best for today
-    const dailyBestKey = `user:${userId}:daily:${today}:best:v3`;
+    const dailyBestKey = `user:${userId}:daily:${today}:${gameMode}:best:v3`;
     const currentDailyBestStr = await redis.get(dailyBestKey);
     const currentDailyBest = currentDailyBestStr ? parseInt(currentDailyBestStr) : 0;
 
@@ -161,14 +205,19 @@ router.post("/api/submit-score", async (req, res): Promise<void> => {
     // Increment practice days
     const practiceDays = await redis.incrBy(`user:${userId}:practiceDays:v3`, 1);
 
-    // Get user's rank
-    const rank = await redis.zRank("leaderboard:global:v3", userId);
-    const userRank = rank !== undefined ? rank + 1 : null;
+    // Get user's rank (FIXED: zRank returns ascending position, we need descending) - mode-specific
+    const rank = await redis.zRank(`leaderboard:global:${gameMode}:v3`, userId);
+    let userRank: number | null = null;
+    if (rank !== undefined) {
+      // Get total count to calculate reverse rank
+      const totalCount = await redis.zCard(`leaderboard:global:${gameMode}:v3`);
+      userRank = totalCount - rank; // Reverse: highest score = rank 1
+    }
 
-    // --- STREAK LOGIC ---
-    const lastPlayedKey = `user:${userId}:lastPlayed:v3`;
-    const streakKey = `user:${userId}:streak:v3`;
-    const streakLeaderboardKey = `leaderboard:streaks:v3`;
+    // --- STREAK LOGIC (Mode-Specific) ---
+    const lastPlayedKey = `user:${userId}:lastPlayed:${gameMode}:v3`;
+    const streakKey = `user:${userId}:streak:${gameMode}:v3`;
+    const streakLeaderboardKey = `leaderboard:streaks:${gameMode}:v3`;
 
     const lastPlayed = await redis.get(lastPlayedKey);
     let currentStreak = await redis.get(streakKey).then(s => parseInt(s || '0'));
@@ -186,6 +235,10 @@ router.post("/api/submit-score", async (req, res): Promise<void> => {
       currentStreak++;
     } else {
       // Missed a day (or first time), reset to 1
+      // MIGRATION: If this is the first time playing this mode (streak=0) but they have a global streak,
+      // we could copy it. But for F1exican mode, we probably want to start fresh.
+      // For Classic mode, we might want to inherit the old global streak if it exists?
+      // Let's keep it simple: Start fresh for new v3 mode keys.
       currentStreak = 1;
     }
 
@@ -193,6 +246,9 @@ router.post("/api/submit-score", async (req, res): Promise<void> => {
     await redis.set(streakKey, currentStreak.toString());
     await redis.zAdd(streakLeaderboardKey, { member: userId, score: currentStreak });
     // --- END STREAK LOGIC ---
+
+    // Track analytics
+    await analytics.trackGameComplete(gameMode as 'classic' | 'f1exican', score, day);
 
     res.json({
       type: "submitScoreResponse",
@@ -222,6 +278,12 @@ router.get("/api/personal-best", async (_req, res): Promise<void> => {
   }
 
   try {
+    // Track user session (first endpoint hit when game loads)
+    const username = await reddit.getCurrentUsername();
+    if (username) {
+      await analytics.trackUserSession(username);
+    }
+
     const [bestStr, dayStr, practiceDaysStr, streakStr] = await Promise.all([ // Added streakStr
       redis.get(`user:${userId}:best:v3`),
       redis.get(`user:${userId}:day:v3`),
@@ -243,13 +305,18 @@ router.get("/api/personal-best", async (_req, res): Promise<void> => {
     }
 
     const rank = await redis.zRank("leaderboard:global:v3", userId);
+    let userRank: number | null = null;
+    if (rank !== undefined) {
+      const totalCount = await redis.zCard("leaderboard:global:v3");
+      userRank = totalCount - rank;
+    }
 
     res.json({
       type: "personalBestResponse",
       personalBest: {
         score: parseInt(bestStr),
         day: dayStr ? parseInt(dayStr) : 0,
-        rank: rank !== undefined ? rank + 1 : null,
+        rank: userRank,
         streak, // Add streak to personalBest object
       },
       practiceDays,
@@ -264,13 +331,14 @@ router.get("/api/personal-best", async (_req, res): Promise<void> => {
 router.get("/api/leaderboard", async (_req, res): Promise<void> => {
   const { userId } = context;
   const sortBy = _req.query.sortBy as string || 'score'; // Added sortBy parameter
+  const mode = _req.query.mode as string || 'classic'; // Mode parameter (classic or f1exican)
 
-  let key = 'leaderboard:global:v3';
+  let key = `leaderboard:global:${mode}:v3`;
   if (sortBy === 'streak') {
-    key = 'leaderboard:streaks:v3';
+    key = `leaderboard:streaks:${mode}:v3`; // Streaks are now mode-specific
   } else if (sortBy === 'daily') {
     const today = new Date().toISOString().split('T')[0];
-    key = `leaderboard:daily:${today}:v3`;
+    key = `leaderboard:daily:${today}:${mode}:v3`; // Daily leaderboards are mode-specific
   }
 
   try {
@@ -329,7 +397,10 @@ router.get("/api/leaderboard", async (_req, res): Promise<void> => {
     let userRank = null;
     if (userId) {
       const rank = await redis.zRank(key, userId); // Use the correct key for user's rank
-      userRank = rank !== undefined ? rank + 1 : null;
+      if (rank !== undefined) {
+        const totalCount = await redis.zCard(key);
+        userRank = totalCount - rank; // Reverse: highest score = rank 1
+      }
     }
 
     res.json({

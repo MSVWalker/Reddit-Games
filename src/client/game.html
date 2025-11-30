@@ -77,24 +77,38 @@
     </div>
 
     <div class="controls-overlay" id="controls-overlay">
-      <div
-        style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%;">
-        <h1 style="text-align: center;">Chive Cutter</h1>
-        <p style="text-align: center; color: #2ecc71; margin-bottom: 5px; font-weight: bold;">Hit the correct key when
-          the chive lands on the cut line</p>
+      <div class="splash-container">
+        <h1 class="splash-title">Chive Cutter</h1>
+        <p class="splash-subtitle">Hit the correct key when the chive lands on the cut line</p>
 
-        <p style="text-align: center; font-size: 0.9rem; margin-top: 10px; color: #ddd;">
+        <p
+          style="text-align: center; font-size: 0.9rem; margin-top: 10px; color: #ddd; font-family: 'Segoe UI', sans-serif;">
           Press <span class="keycap">A</span> <span class="keycap">S</span> <span class="keycap">D</span> or tap lanes
         </p>
 
-        <button id="start-button">START DAY 1</button>
+        <!-- Mode & Action Block (Grid) -->
+        <div class="splash-grid">
+          <button class="mode-toggle-btn splash-mode-btn active" data-mode="classic"
+            style="width: 100% !important; margin: 0 !important; box-sizing: border-box;">Classic</button>
+          <button class="mode-toggle-btn splash-mode-btn" data-mode="f1exican"
+            style="width: 100% !important; margin: 0 !important; box-sizing: border-box;">F1exican</button>
+          <button id="start-button" class="main-cta-btn splash-start-btn"
+            style="grid-column: 1 / -1; width: 100% !important; max-width: none !important; margin: 0 !important; box-sizing: border-box;">START</button>
+        </div>
+
+        <div id="splash-streak-display" class="splash-streak" style="margin-top: 15px;">
+          <span id="splash-streak-text">Loading...</span>
+        </div>
       </div>
 
-      <p id="practice-day-text"
-        style="text-align: center; font-size: 1.2rem; line-height: 1.4; color: #ccc; margin: 0 auto 15px auto; font-style: italic; max-width: 90%;">
-        Cutting a couple of chives every day until r/KitchenConfidential says they're perfect.</p>
+      <!-- Flavor Block -->
+      <p id="practice-day-text" class="splash-flavor-text">
+        Cutting a couple of chives every day until r/KitchenConfidential says they're perfect.
+      </p>
 
-      <div class="splash-footer">An unofficial mini-game for r/KitchenConfidential</div>
+      <div class="splash-footer">
+        An unofficial mini-game for r/KitchenConfidential
+      </div>
     </div>
 
     <div class="mobile-controls">
