@@ -1,14 +1,22 @@
 import { ArrowDown } from 'lucide-react';
 
 const TEMPLATES = [
-    { src: '/template1.png', name: 'Reaction' },
-    { src: '/template2.png', name: 'Comparison' },
-    { src: '/template3.jpg', name: 'Urinals' },
+    { src: '/distracted-boyfriend.jpg', name: 'Distracted Boyfriend' },
+    { src: '/drake.jpg', name: 'Drake Hotline' },
+    { src: '/astronauts.jpg', name: 'Astronauts (Wait It\'s All...)' },
     { src: '/toy-story.jpg', name: 'Toy Story' },
-    { src: '/disaster-girl.jpg', name: 'Disaster Girl' },
     { src: '/uno-draw-25.jpg', name: 'UNO Draw 25' },
     { src: '/batman-slap.jpg', name: 'Batman Slap' },
+    { src: '/buttons.jpg', name: 'Buttons' },
     { src: '/left-exit.jpg', name: 'Left Exit 12' },
+    { src: '/Waiting-Skeleton.jpg', name: 'Waiting Skeleton' },
+    { src: '/Roll-Safe-Think-About-It.jpg', name: 'Roll Safe' },
+    { src: '/This-Is-Fine.jpg', name: 'This Is Fine' },
+    { src: '/Monkey-Puppet.jpg', name: 'Awkward Monkey' },
+    { src: '/Change-My-Mind.jpg', name: 'Change My Mind' },
+    { src: '/Laughing-Leo.webp', name: 'Laughing Leo' },
+    { src: '/Yall-Got-Any-More-Of-That.jpg', name: 'Y\'all Got Any More' },
+    { src: '/Padme-Anakin.jpg', name: 'Padme / Anakin' },
 ];
 
 interface GalleryProps {
@@ -28,15 +36,15 @@ export function Gallery({ onSelect }: GalleryProps) {
                         <span className="text-orange-500">🔥</span>
                         <span>872 made today</span>
                     </div>
-                </div>
+        </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {TEMPLATES.map((template) => (
-                        <button
-                            key={template.src}
-                            onClick={() => onSelect(template.src)}
-                            className="group relative overflow-hidden rounded-2xl shadow-sm border border-zinc-200 bg-white hover:shadow-md transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500"
-                        >
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {TEMPLATES.map((template) => (
+                <button
+                    key={template.src}
+                    onClick={() => onSelect(template.src)}
+                    className="group relative overflow-hidden rounded-2xl shadow-sm border border-zinc-200 bg-white hover:shadow-md transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500"
+                >
                             <img
                                 src={template.src}
                                 alt={template.name}

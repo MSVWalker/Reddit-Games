@@ -12,70 +12,53 @@
 </head>
 
 <body class="splash-body">
-  <div class="blobs blobs-top"></div>
-  <div class="blobs blobs-bottom"></div>
-
   <div class="splash-shell">
-    <header class="splash-header">
-      <div class="stat-pill">
-        <span class="flame">🔥</span>
-        <span class="stat-text"><strong>872</strong> memes made today</span>
+    <div class="collage">
+      <div class="strip-row">
+        <div class="strip-card"><img src="/distracted-boyfriend.jpg" alt="Distracted boyfriend" /></div>
+        <div class="strip-card"><img src="/drake.jpg" alt="Drake" /></div>
+        <div class="strip-card"><img src="/astronauts.jpg" alt="Astronauts" /></div>
+        <div class="strip-card"><img src="/Waiting-Skeleton.jpg" alt="Waiting skeleton" /></div>
+        <div class="strip-card"><img src="/Roll-Safe-Think-About-It.jpg" alt="Roll Safe" /></div>
+        <div class="strip-card"><img src="/This-Is-Fine.jpg" alt="This is fine" /></div>
+        <div class="strip-card"><img src="/Monkey-Puppet.jpg" alt="Awkward monkey" /></div>
+        <div class="strip-card"><img src="/Change-My-Mind.jpg" alt="Change my mind" /></div>
+        <div class="strip-card"><img src="/Laughing-Leo.webp" alt="Laughing Leo" /></div>
+        <div class="strip-card"><img src="/Yall-Got-Any-More-Of-That.jpg" alt="Yall got any more" /></div>
+        <div class="strip-card"><img src="/Padme-Anakin.jpg" alt="Padme Anakin" /></div>
       </div>
-    </header>
+      <div class="strip-row">
+        <div class="strip-card"><img src="/distracted-boyfriend.jpg" alt="Distracted boyfriend" /></div>
+        <div class="strip-card"><img src="/drake.jpg" alt="Drake" /></div>
+        <div class="strip-card"><img src="/astronauts.jpg" alt="Astronauts" /></div>
+        <div class="strip-card"><img src="/Waiting-Skeleton.jpg" alt="Waiting skeleton" /></div>
+        <div class="strip-card"><img src="/Roll-Safe-Think-About-It.jpg" alt="Roll Safe" /></div>
+        <div class="strip-card"><img src="/This-Is-Fine.jpg" alt="This is fine" /></div>
+        <div class="strip-card"><img src="/Monkey-Puppet.jpg" alt="Awkward monkey" /></div>
+        <div class="strip-card"><img src="/Change-My-Mind.jpg" alt="Change my mind" /></div>
+        <div class="strip-card"><img src="/Laughing-Leo.webp" alt="Laughing Leo" /></div>
+        <div class="strip-card"><img src="/Yall-Got-Any-More-Of-That.jpg" alt="Yall got any more" /></div>
+        <div class="strip-card"><img src="/Padme-Anakin.jpg" alt="Padme Anakin" /></div>
+      </div>
+    </div>
 
     <main class="splash-main">
       <div class="title-block">
         <h1 class="splash-title">MEME<span class="accent">GEN</span></h1>
-        <p class="splash-subtitle">Turn any post into a meme in three taps.</p>
-      </div>
-
-      <div class="flow-grid">
-        <div class="flow-item yellow">
-          <span class="flow-text">Choose Template</span>
-        </div>
-        <div class="flow-item pink">
-          <span class="flow-text">Add Text</span>
-        </div>
-        <div class="flow-item mint">
-          <span class="flow-text">Post to Reddit</span>
-        </div>
-        <div class="flow-item purple">
-          <span class="flow-text">Download & Share</span>
-        </div>
-        <div class="flow-arrows">
-          <div class="arrow a1">↺</div>
-          <div class="arrow a2">↺</div>
-          <div class="arrow a3">↺</div>
-          <div class="arrow a4">↺</div>
-        </div>
       </div>
 
       <button class="start-cta" id="start-button">
         Start Creating
       </button>
-
-      <div class="template-strip">
-        <div class="strip-label">Or jump straight into a popular template ↓</div>
-        <div class="strip-grid">
-          <div class="strip-card"><img src="/distracted-boyfriend.jpg" alt="Distracted boyfriend" /></div>
-          <div class="strip-card"><img src="/drake.jpg" alt="Drake" /></div>
-          <div class="strip-card"><img src="/astronauts.jpg" alt="Astronauts" /></div>
-          <div class="strip-card"><img src="/uno-draw-25.jpg" alt="UNO Draw 25" /></div>
-          <div class="strip-card"><img src="/batman-slap.jpg" alt="Batman Slap" /></div>
-        </div>
-      </div>
     </main>
-  </div>
 
-  <footer class="splash-footer">
-    <div class="footer-links">
-      <div class="footer-link" tabindex="0" id="docs-link">Docs</div>
-      <span class="divider">|</span>
-      <div class="footer-link" tabindex="0" id="playtest-link">r/Devvit</div>
-      <span class="divider">|</span>
-      <div class="footer-link" tabindex="0" id="discord-link">Discord</div>
+    <div class="stat-bottom">
+      <div class="stat-pill">
+        <span class="flame">🔥</span>
+        <span class="stat-text"><strong id="memes-count">872</strong> memes made today</span>
+      </div>
     </div>
-  </footer>
+  </div>
 
   <script type="module" src="splash/splash.ts" defer></script>
 </body>

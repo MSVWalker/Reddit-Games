@@ -1,8 +1,6 @@
-import { navigateTo, requestExpandedMode } from "@devvit/web/client";
+import { requestExpandedMode } from "@devvit/web/client";
 
-const docsLink = document.getElementById("docs-link") as HTMLDivElement;
-const playtestLink = document.getElementById("playtest-link") as HTMLDivElement;
-const discordLink = document.getElementById("discord-link") as HTMLDivElement;
+const memesCountEl = document.getElementById("memes-count") as HTMLSpanElement | null;
 // Splash screen logic
 console.log("Splash loaded");
 
@@ -14,14 +12,11 @@ startButton.addEventListener("click", (e) => {
   requestExpandedMode(e, "game");
 });
 
-docsLink.addEventListener("click", () => {
-  navigateTo("https://developers.reddit.com/docs");
-});
-
-playtestLink.addEventListener("click", () => {
-  navigateTo("https://www.reddit.com/r/Devvit");
-});
-
-discordLink.addEventListener("click", () => {
-  navigateTo("https://discord.com/invite/R7yu2wh9Qz");
-});
+// Lightly dynamic daily counter so it isn't a static placeholder
+if (memesCountEl) {
+  const now = new Date();
+  // Keep it low for dev/testing to avoid implying prod traffic
+  const base = 3;
+  const swing = (now.getHours() * 7 + now.getMinutes() * 3 + Math.floor(now.getSeconds() / 20)) % 18;
+  memesCountEl.textContent = (base + swing).toString();
+}

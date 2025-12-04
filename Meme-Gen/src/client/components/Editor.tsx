@@ -71,6 +71,8 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [scale, setScale] = useState(1); // Track scale for positioning
+    const [viewportKey, setViewportKey] = useState(0);
+    const [isNarrow, setIsNarrow] = useState(false);
 
     // UI State
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
@@ -95,6 +97,17 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         };
     }, [templateSrc]);
 
+    // Recompute layout on resize to keep the canvas contained on mobile
+    useEffect(() => {
+        const handleResize = () => {
+            setViewportKey((k) => k + 1);
+            setIsNarrow(window.innerWidth < 1024);
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     // Render Canvas
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -105,10 +118,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         const container = containerRef.current;
         if (container) {
             const { width: containerWidth, height: containerHeight } = container.getBoundingClientRect();
-            // Add padding to calculation
-            const padding = 40;
-            const availWidth = containerWidth - padding;
-            const availHeight = containerHeight - padding;
+            const toolbarWidth = 80; // right column width
+            const padding = isNarrow ? 16 : 28;
+            const availWidth = containerWidth - toolbarWidth - padding * 2;
+            const availHeight = containerHeight - padding * 2;
 
             const newScale = Math.min(availWidth / image.width, availHeight / image.height);
             setScale(newScale);
@@ -227,7 +240,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             ctx.stroke();
             ctx.restore();
         }
-    }, [image, elements, selectedId, editingTextId, drawingStrokes, currentStroke, drawColor, brushSize]);
+    }, [image, elements, selectedId, editingTextId, drawingStrokes, currentStroke, drawColor, brushSize, viewportKey]);
 
 
 
@@ -482,7 +495,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             <div
                 ref={containerRef}
                 className="absolute inset-0 flex items-center justify-center bg-zinc-950"
-                style={{ paddingRight: '80px' }} // Space for right column
+                style={{ padding: isNarrow ? '12px 80px 12px 12px' : '24px 96px 24px 24px' }} // leave room for right column
             >
                 <div className="relative">
                     <canvas
