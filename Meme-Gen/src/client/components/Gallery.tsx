@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { ArrowDown } from 'lucide-react';
 
 const TEMPLATES = [

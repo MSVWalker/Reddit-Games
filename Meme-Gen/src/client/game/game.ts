@@ -34,9 +34,6 @@ let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
 let nextId = 1;
 
-// Popular emojis for quick access
-const POPULAR_EMOJIS = ['😂', '😍', '🔥', '💯', '👍', '😭', '🙏', '💀', '😎', '🤔', '😱', '🎉'];
-
 const EMOJI_CATEGORIES = {
   'Smileys': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙'],
   'Gestures': ['👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘', '👌', '🤏', '👈', '👉', '👆', '👇', '☝️', '👏', '🙌', '🤲'],
@@ -51,7 +48,6 @@ const templateGrid = document.getElementById('template-grid');
 const canvas = document.getElementById('meme-canvas') as HTMLCanvasElement;
 const ctx = canvas?.getContext('2d');
 
-const canvasWrapper = document.querySelector('.canvas-wrapper');
 const backBtn = document.getElementById('back-btn');
 const downloadBtn = document.getElementById('download-btn');
 const addTextBtn = document.getElementById('add-text-btn');
@@ -74,6 +70,8 @@ const TEMPLATES = [
 
 // Initialize Gallery
 function initGallery() {
+  if (!templateGrid) return;
+
   templateGrid.innerHTML = '';
   TEMPLATES.forEach(template => {
     const card = document.createElement('div');
@@ -205,6 +203,8 @@ function renderCanvas() {
 function getElementAtPosition(x: number, y: number): CanvasElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
+    if (!el) continue;
+
     const size = el.type === 'text' ? el.fontSize : el.size;
     if (Math.abs(x - el.x) < size && Math.abs(y - el.y) < size) {
       return el;
@@ -314,6 +314,8 @@ const COLOR_PRESETS = [
 
 // Update style panel
 function updateStylePanel() {
+  if (!stylePanel) return;
+
   const element = elements.find(el => el.id === selectedElementId);
   if (!element || element.type !== 'text') {
     stylePanel.classList.add('hidden');
@@ -405,7 +407,7 @@ function buildColorSwatches() {
 }
 
 // Event listeners
-if (backBtn) {
+if (backBtn && editorView && galleryView) {
   backBtn.onclick = () => {
     editorView.classList.add('hidden');
     galleryView.classList.remove('hidden');
@@ -536,4 +538,3 @@ if (templateGrid) initGallery();
 if (document.getElementById('emoji-categories')) buildEmojiPicker();
 if (document.getElementById('text-color-swatches')) buildColorSwatches();
 console.log('🎨 Advanced Meme Editor loaded!');
-

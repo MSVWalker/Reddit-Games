@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Gallery } from './components/Gallery';
 import { Editor } from './components/Editor';
 
