@@ -1,10 +1,11 @@
 {
   "private": true,
   "name": "meme-gen-1",
-  "version": "0.0.0",
+  "version": "0.0.11",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
+    "predev": "node tools/bump-version.js",
     "postinstall": "npm run build",
     "build:client": "cd src/client && vite build",
     "build:server": "cd src/server && vite build",
