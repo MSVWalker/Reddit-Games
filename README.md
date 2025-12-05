@@ -17,6 +17,12 @@ A rhythm-based mini-game for r/KitchenConfidential where you perfect your chive-
 
 [Play on Reddit](https://www.reddit.com/r/chive_remix_dev/) | [View Documentation](./Chive-Cutter/README.md)
 
+### 😂 [Meme Gen](./Meme-Gen)
+
+A Devvit-based meme generator with a template gallery, canvas editor, and download/post flows.
+
+[View Documentation](./Meme-Gen/README.md)
+
 ---
 
 Built with ❤️ using [Devvit](https://developers.reddit.com/)
