@@ -94,6 +94,7 @@ const MEME_FILES = [
     'reddit-formats-collection.jpg',
     'thats-how-you-do-it.jpg',
     'tried-your-best.jpg',
+    'whiteboard-blank.jpg',
 ];
 
 const formatName = (file: string) =>
