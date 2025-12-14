@@ -1,0 +1,166 @@
+{
+  "generatedAt": "2025-12-14T03:59:26.661Z",
+  "count": 32,
+  "teams": [
+    {
+      "name": "Arizona Cardinals",
+      "slug": "arizona-cardinals",
+      "file": "arizona-cardinals.png"
+    },
+    {
+      "name": "Atlanta Falcons",
+      "slug": "atlanta-falcons",
+      "file": "atlanta-falcons.png"
+    },
+    {
+      "name": "Baltimore Ravens",
+      "slug": "baltimore-ravens",
+      "file": "baltimore-ravens.png"
+    },
+    {
+      "name": "Buffalo Bills",
+      "slug": "buffalo-bills",
+      "file": "buffalo-bills.png"
+    },
+    {
+      "name": "Carolina Panthers",
+      "slug": "carolina-panthers",
+      "file": "carolina-panthers.png"
+    },
+    {
+      "name": "Chicago Bears",
+      "slug": "chicago-bears",
+      "file": "chicago-bears.png"
+    },
+    {
+      "name": "Cincinnati Bengals",
+      "slug": "cincinnati-bengals",
+      "file": "cincinnati-bengals.png"
+    },
+    {
+      "name": "Cleveland Browns",
+      "slug": "cleveland-browns",
+      "file": "cleveland-browns.png"
+    },
+    {
+      "name": "Dallas Cowboys",
+      "slug": "dallas-cowboys",
+      "file": "dallas-cowboys.png"
+    },
+    {
+      "name": "Denver Broncos",
+      "slug": "denver-broncos",
+      "file": "denver-broncos.png"
+    },
+    {
+      "name": "Detroit Lions",
+      "slug": "detroit-lions",
+      "file": "detroit-lions.png"
+    },
+    {
+      "name": "Green Bay Packers",
+      "slug": "green-bay-packers",
+      "file": "green-bay-packers.png"
+    },
+    {
+      "name": "Houston Texans",
+      "slug": "houston-texans",
+      "file": "houston-texans.png"
+    },
+    {
+      "name": "Indianapolis Colts",
+      "slug": "indianapolis-colts",
+      "file": "indianapolis-colts.png"
+    },
+    {
+      "name": "Jacksonville Jaguars",
+      "slug": "jacksonville-jaguars",
+      "file": "jacksonville-jaguars.png"
+    },
+    {
+      "name": "Kansas City Chiefs",
+      "slug": "kansas-city-chiefs",
+      "file": "kansas-city-chiefs.png"
+    },
+    {
+      "name": "Las Vegas Raiders",
+      "slug": "las-vegas-raiders",
+      "file": "las-vegas-raiders.png"
+    },
+    {
+      "name": "Los Angeles Chargers",
+      "slug": "los-angeles-chargers",
+      "file": "los-angeles-chargers.png"
+    },
+    {
+      "name": "Los Angeles Rams",
+      "slug": "los-angeles-rams",
+      "file": "los-angeles-rams.png"
+    },
+    {
+      "name": "Miami Dolphins",
+      "slug": "miami-dolphins",
+      "file": "miami-dolphins.png"
+    },
+    {
+      "name": "Minnesota Vikings",
+      "slug": "minnesota-vikings",
+      "file": "minnesota-vikings.png"
+    },
+    {
+      "name": "New England Patriots",
+      "slug": "new-england-patriots",
+      "file": "new-england-patriots.png"
+    },
+    {
+      "name": "New Orleans Saints",
+      "slug": "new-orleans-saints",
+      "file": "new-orleans-saints.png"
+    },
+    {
+      "name": "New York Giants",
+      "slug": "new-york-giants",
+      "file": "new-york-giants.png"
+    },
+    {
+      "name": "New York Jets",
+      "slug": "new-york-jets",
+      "file": "new-york-jets.png"
+    },
+    {
+      "name": "Philadelphia Eagles",
+      "slug": "philadelphia-eagles",
+      "file": "philadelphia-eagles.png"
+    },
+    {
+      "name": "Pittsburgh Steelers",
+      "slug": "pittsburgh-steelers",
+      "file": "pittsburgh-steelers.png"
+    },
+    {
+      "name": "San Francisco 49ers",
+      "slug": "san-francisco-49ers",
+      "file": "san-francisco-49ers.png"
+    },
+    {
+      "name": "Seattle Seahawks",
+      "slug": "seattle-seahawks",
+      "file": "seattle-seahawks.png"
+    },
+    {
+      "name": "Tampa Bay Buccaneers",
+      "slug": "tampa-bay-buccaneers",
+      "file": "tampa-bay-buccaneers.png"
+    },
+    {
+      "name": "Tennessee Titans",
+      "slug": "tennessee-titans",
+      "file": "tennessee-titans.png"
+    },
+    {
+      "name": "Washington Commanders",
+      "slug": "washington-commanders",
+      "file": "washington-commanders.png"
+    }
+  ]
+}

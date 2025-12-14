@@ -75,7 +75,17 @@ const formatName = (file: string) =>
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const TEMPLATES = MEME_FILES.map((file) => ({
+const UNIQUE_MEME_FILES = (() => {
+    const seen = new Set<string>();
+    return MEME_FILES.filter((file) => {
+        const key = file.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+})();
+
+const TEMPLATES = UNIQUE_MEME_FILES.map((file) => ({
     src: `/memes/${file}`,
     name: formatName(file),
 }));

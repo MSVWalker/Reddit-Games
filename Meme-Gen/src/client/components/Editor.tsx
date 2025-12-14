@@ -29,6 +29,7 @@ interface TextElement {
     fontSize: number;
     fontFamily: string;
     color: string;
+    strokeColor: string;
     bgColor: string;
     rotation: number;
     align: 'left' | 'center' | 'right';
@@ -67,6 +68,34 @@ type CanvasElement = TextElement | EmojiElement | ImageElement;
 
 type ActiveTool = 'add-text' | 'add-emoji' | 'add-image' | 'draw' | null;
 
+type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
+
+type Point = { x: number; y: number };
+
+type ElementBox = {
+    cx: number;
+    cy: number;
+    width: number;
+    height: number;
+    rotation: number;
+};
+
+type ResizeState = {
+    elementId: string;
+    handle: ResizeHandle;
+    fixedCorner: Point;
+    startBox: { width: number; height: number };
+    start: {
+        x: number;
+        y: number;
+        fontSize?: number;
+        size?: number;
+        width?: number;
+        height?: number;
+    };
+    rotation: number;
+};
+
 const POPULAR_EMOJIS = [
     '😂', '😍', '🔥', '💯', '👍', '😭', '🙏', '💀', '😎', '🤔', '😱', '🎉', '👀', '🧠', '🤡', '💩', '😅', '🥳', '🥺', '🤯',
     '😴', '🤨', '😡', '🤖', '👾', '🐸', '🍕', '☕️', '🌈', '😇', '🥰', '🤤', '😋', '🙃', '😏', '😬', '🤥', '🤢', '🤮', '🤧',
@@ -77,15 +106,7 @@ const POPULAR_EMOJIS = [
     '🍉', '🍇', '🍓'
 ];
 
-const FONT_OPTIONS = [
-    { key: 'impact', label: 'Impact', stack: 'Impact, Arial Black, sans-serif' },
-    { key: 'anton', label: 'Anton', stack: '"Anton", Impact, sans-serif' },
-    { key: 'bangers', label: 'Bangers', stack: '"Bangers", "Comic Sans MS", cursive, sans-serif' },
-    { key: 'inter', label: 'Inter', stack: '"Inter", "Segoe UI", sans-serif' },
-    { key: 'georgia', label: 'Georgia', stack: 'Georgia, serif' },
-    { key: 'courier', label: 'Courier', stack: '"Courier New", monospace' },
-];
-const DEFAULT_FONT_STACK = FONT_OPTIONS[0]?.stack ?? 'Impact, Arial Black, sans-serif';
+const DEFAULT_FONT_STACK = 'Impact, Arial Black, sans-serif';
 
 const STICKERS = [
     { name: 'Speech Bubble', src: '/stickers/sticker_speech_bubble_1_1764881023554.png' },
@@ -97,15 +118,121 @@ const STICKERS = [
     { name: 'Fire', src: '/stickers/sticker_fire_1764881100984.png' },
 ];
 
+const NFL_LOGOS = [
+    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
+    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
+    { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
+    { name: 'Buffalo Bills', src: '/stickers/nfl/buffalo-bills.png' },
+    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
+    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
+    { name: 'Cincinnati Bengals', src: '/stickers/nfl/cincinnati-bengals.png' },
+    { name: 'Cleveland Browns', src: '/stickers/nfl/cleveland-browns.png' },
+    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
+    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
+    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
+    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Houston Texans', src: '/stickers/nfl/houston-texans.png' },
+    { name: 'Indianapolis Colts', src: '/stickers/nfl/indianapolis-colts.png' },
+    { name: 'Jacksonville Jaguars', src: '/stickers/nfl/jacksonville-jaguars.png' },
+    { name: 'Kansas City Chiefs', src: '/stickers/nfl/kansas-city-chiefs.png' },
+    { name: 'Las Vegas Raiders', src: '/stickers/nfl/las-vegas-raiders.png' },
+    { name: 'Los Angeles Chargers', src: '/stickers/nfl/los-angeles-chargers.png' },
+    { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
+    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
+    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
+    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
+    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    { name: 'New York Giants', src: '/stickers/nfl/new-york-giants.png' },
+    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
+    { name: 'Philadelphia Eagles', src: '/stickers/nfl/philadelphia-eagles.png' },
+    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
+    { name: 'San Francisco 49ers', src: '/stickers/nfl/san-francisco-49ers.png' },
+    { name: 'Seattle Seahawks', src: '/stickers/nfl/seattle-seahawks.png' },
+    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
+    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
+    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
+];
+
+const HANDLE_SIGNS: Record<ResizeHandle, { sx: -1 | 1; sy: -1 | 1 }> = {
+    nw: { sx: -1, sy: -1 },
+    ne: { sx: 1, sy: -1 },
+    se: { sx: 1, sy: 1 },
+    sw: { sx: -1, sy: 1 },
+};
+
+const degToRad = (deg: number) => (deg * Math.PI) / 180;
+
+const rotatePoint = (point: Point, angleRad: number): Point => {
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    return { x: point.x * cos - point.y * sin, y: point.x * sin + point.y * cos };
+};
+
+const dist2 = (a: Point, b: Point) => {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy;
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const getTextLines = (content: string) => {
+    const lines = content.split('\n');
+    return lines.length ? lines : [''];
+};
+
+const getTextMetrics = (ctx: CanvasRenderingContext2D, el: TextElement) => {
+    const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
+    ctx.font = `900 ${el.fontSize}px ${fontStack}`;
+    const lines = getTextLines(el.content);
+    const lineHeight = el.fontSize * 1.12;
+    const maxWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), el.fontSize);
+    const height = lineHeight * lines.length;
+    return { lines, lineHeight, maxWidth, height, fontStack };
+};
+
+const getElementBox = (ctx: CanvasRenderingContext2D, el: CanvasElement): ElementBox => {
+    if (el.type === 'image') {
+        return { cx: el.x, cy: el.y, width: el.width, height: el.height, rotation: el.rotation };
+    }
+    if (el.type === 'emoji') {
+        return { cx: el.x, cy: el.y, width: el.size, height: el.size, rotation: el.rotation };
+    }
+    const { maxWidth, height } = getTextMetrics(ctx, el);
+    const padding = 14;
+    return { cx: el.x, cy: el.y, width: maxWidth + padding * 2, height: height + padding * 2, rotation: el.rotation };
+};
+
+const pointInBox = (point: Point, box: ElementBox) => {
+    const r = degToRad(box.rotation);
+    const local = rotatePoint({ x: point.x - box.cx, y: point.y - box.cy }, -r);
+    return Math.abs(local.x) <= box.width / 2 && Math.abs(local.y) <= box.height / 2;
+};
+
+const getHandlePoints = (box: ElementBox): { handle: ResizeHandle; point: Point }[] => {
+    const r = degToRad(box.rotation);
+    const halfW = box.width / 2;
+    const halfH = box.height / 2;
+    return (Object.keys(HANDLE_SIGNS) as ResizeHandle[]).map((handle) => {
+        const { sx, sy } = HANDLE_SIGNS[handle];
+        const local = { x: sx * halfW, y: sy * halfH };
+        const rotated = rotatePoint(local, r);
+        return { handle, point: { x: box.cx + rotated.x, y: box.cy + rotated.y } };
+    });
+};
+
 export function Editor({ templateSrc, onBack }: EditorProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const uploadInputRef = useRef<HTMLInputElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
+    const drawingLayerRef = useRef<HTMLCanvasElement | null>(null);
+    const resizeRef = useRef<ResizeState | null>(null);
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [image, setImage] = useState<HTMLImageElement | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [isResizing, setIsResizing] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [scale, setScale] = useState(1); // Track scale for positioning
     const [viewportKey, setViewportKey] = useState(0);
@@ -125,6 +252,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [drawColor, setDrawColor] = useState('#ff0000');
     const [brushSize, setBrushSize] = useState(3);
     const [drawMode, setDrawMode] = useState<'draw' | 'erase'>('draw');
+    const [drawLayer, setDrawLayer] = useState<'behind' | 'front'>('front');
     const dataUrlToBlob = (dataUrl: string) => {
         const [header, base64] = dataUrl.split(',');
         if (!header || !base64) return new Blob();
@@ -162,9 +290,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         return Math.max(20, Math.min(96, Math.round(scaled)));
     };
 
-    const getDefaultTextareaWidth = () => {
-        if (!image) return 800;
-        return Math.min(1400, Math.max(640, image.width * 0.8));
+    const getMaxFontSize = () => {
+        if (!image) return 200;
+        return Math.max(48, Math.round(image.width * 0.3));
     };
 
     // Load Image
@@ -240,55 +368,99 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(image, 0, 0);
 
-        elements.forEach(el => {
-            // Don't draw the text being edited (it will be covered by the textarea)
+        const drawingCanvas = drawingLayerRef.current ?? document.createElement('canvas');
+        if (!drawingLayerRef.current) drawingLayerRef.current = drawingCanvas;
+        drawingCanvas.width = image.width;
+        drawingCanvas.height = image.height;
+        const drawingCtx = drawingCanvas.getContext('2d');
+
+        if (drawingCtx) {
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            drawingCtx.imageSmoothingEnabled = true;
+
+            drawingStrokes.forEach((stroke) => {
+                if (stroke.points.length < 2) return;
+                drawingCtx.save();
+                drawingCtx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+                drawingCtx.strokeStyle = stroke.color;
+                drawingCtx.lineWidth = stroke.lineWidth;
+                drawingCtx.lineCap = 'round';
+                drawingCtx.lineJoin = 'round';
+                drawingCtx.beginPath();
+                const firstPoint = stroke.points[0];
+                if (firstPoint) drawingCtx.moveTo(firstPoint.x, firstPoint.y);
+                for (let i = 1; i < stroke.points.length; i++) {
+                    const point = stroke.points[i];
+                    if (point) drawingCtx.lineTo(point.x, point.y);
+                }
+                drawingCtx.stroke();
+                drawingCtx.restore();
+            });
+
+            if (currentStroke && currentStroke.length > 1) {
+                drawingCtx.save();
+                drawingCtx.globalCompositeOperation = drawMode === 'erase' ? 'destination-out' : 'source-over';
+                drawingCtx.strokeStyle = drawColor;
+                drawingCtx.lineWidth = brushSize;
+                drawingCtx.lineCap = 'round';
+                drawingCtx.lineJoin = 'round';
+                drawingCtx.beginPath();
+                const firstPoint = currentStroke[0];
+                if (firstPoint) drawingCtx.moveTo(firstPoint.x, firstPoint.y);
+                for (let i = 1; i < currentStroke.length; i++) {
+                    const point = currentStroke[i];
+                    if (point) drawingCtx.lineTo(point.x, point.y);
+                }
+                drawingCtx.stroke();
+                drawingCtx.restore();
+            }
+        }
+
+        if (drawLayer === 'behind') {
+            ctx.drawImage(drawingCanvas, 0, 0);
+        }
+
+        elements.forEach((el) => {
             if (el.id === editingTextId) return;
 
             ctx.save();
             if (el.type === 'text') {
                 const align = el.align ?? 'center';
-                ctx.font = `900 ${el.fontSize}px ${el.fontFamily || 'Impact, Arial Black, sans-serif'}`;
+                const { lines, lineHeight, maxWidth, height, fontStack } = getTextMetrics(ctx, el);
+                ctx.font = `900 ${el.fontSize}px ${fontStack}`;
                 ctx.textAlign = align;
                 ctx.textBaseline = 'middle';
 
-                const lines = el.content.split('\n').length ? el.content.split('\n') : [''];
-                const lineHeight = el.fontSize * 1.12;
-                const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 0);
-                const totalHeight = lineHeight * lines.length;
                 const startY = -((lines.length - 1) * lineHeight) / 2;
-                const alignOffset = align === 'left' ? -maxWidth / 2 : align === 'right' ? maxWidth / 2 : 0;
+                const textX = align === 'left' ? -maxWidth / 2 : align === 'right' ? maxWidth / 2 : 0;
 
-                ctx.translate(el.x + alignOffset, el.y);
-                ctx.rotate((el.rotation * Math.PI) / 180);
+                ctx.translate(el.x, el.y);
+                ctx.rotate(degToRad(el.rotation));
 
-                // Background
                 if (el.bgColor !== 'transparent') {
-                    const bgX = align === 'left' ? 0 : align === 'center' ? -maxWidth / 2 : -maxWidth;
                     ctx.fillStyle = el.bgColor;
-                    ctx.fillRect(bgX - 12, startY - el.fontSize / 2 - 6, maxWidth + 24, totalHeight + 12);
+                    ctx.fillRect(-maxWidth / 2 - 12, startY - el.fontSize / 2 - 6, maxWidth + 24, height + 12);
                 }
 
-                // Text
                 ctx.fillStyle = el.color;
-                ctx.strokeStyle = el.color === '#ffffff' ? '#000000' : '#ffffff';
+                ctx.strokeStyle = el.strokeColor || (el.color === '#ffffff' ? '#000000' : '#ffffff');
                 ctx.lineWidth = el.fontSize / 20;
 
                 lines.forEach((line, i) => {
                     const y = startY + i * lineHeight;
-                    ctx.strokeText(line, 0, y);
-                    ctx.fillText(line, 0, y);
+                    ctx.strokeText(line, textX, y);
+                    ctx.fillText(line, textX, y);
                 });
             } else if (el.type === 'emoji') {
                 ctx.translate(el.x, el.y);
-                ctx.rotate((el.rotation * Math.PI) / 180);
+                ctx.rotate(degToRad(el.rotation));
                 ctx.font = `${el.size}px Arial`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(el.emoji, 0, 0);
             } else if (el.type === 'image' && el.imgObject) {
                 ctx.translate(el.x, el.y);
-                ctx.rotate((el.rotation * Math.PI) / 180);
-                // Draw image centered
+                ctx.rotate(degToRad(el.rotation));
                 try {
                     ctx.drawImage(el.imgObject, -el.width / 2, -el.height / 2, el.width, el.height);
                 } catch (e) {
@@ -296,72 +468,42 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 }
             }
             ctx.restore();
-
-            // Selection Box
-            if (el.id === selectedId && el.id !== editingTextId) {
-                ctx.save();
-                ctx.strokeStyle = '#a855f7'; // Purple-500
-                ctx.lineWidth = 4;
-                ctx.setLineDash([10, 10]);
-                if (el.type === 'text') {
-                    ctx.font = `900 ${el.fontSize}px ${el.fontFamily || 'Impact, Arial Black, sans-serif'}`;
-                    const lines = el.content.split('\n').length ? el.content.split('\n') : [''];
-                    const lineHeight = el.fontSize * 1.12;
-                    const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width), el.fontSize);
-                    const totalHeight = lineHeight * lines.length;
-                    const alignOffset = el.align === 'left' ? -maxWidth / 2 : el.align === 'right' ? maxWidth / 2 : 0;
-                    ctx.strokeRect(el.x + alignOffset - maxWidth / 2 - 10, el.y - totalHeight / 2 - 10, maxWidth + 20, totalHeight + 20);
-                } else if (el.type === 'emoji') {
-                    const size = el.size;
-                    ctx.strokeRect(el.x - size / 2, el.y - size / 2, size, size);
-                } else if (el.type === 'image') {
-                    ctx.translate(el.x, el.y);
-                    ctx.rotate((el.rotation * Math.PI) / 180);
-                    ctx.strokeRect(-el.width / 2, -el.height / 2, el.width, el.height);
-                }
-                ctx.restore();
-            }
         });
 
-        // Draw strokes
-        drawingStrokes.forEach(stroke => {
-            if (stroke.points.length < 2) return;
-            ctx.save();
-            ctx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
-            ctx.strokeStyle = stroke.color;
-            ctx.lineWidth = stroke.lineWidth;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            const firstPoint = stroke.points[0];
-            if (firstPoint) ctx.moveTo(firstPoint.x, firstPoint.y);
-            for (let i = 1; i < stroke.points.length; i++) {
-                const point = stroke.points[i];
-                if (point) ctx.lineTo(point.x, point.y);
-            }
-            ctx.stroke();
-            ctx.restore();
-        });
+        if (drawLayer === 'front') {
+            ctx.drawImage(drawingCanvas, 0, 0);
+        }
 
-        // Draw current stroke being drawn
-        if (currentStroke && currentStroke.length > 1) {
+        const selectedEl = selectedId ? elements.find((el) => el.id === selectedId) : undefined;
+        if (selectedEl && selectedEl.id !== editingTextId) {
+            const box = getElementBox(ctx, selectedEl);
+            const handleRadius = 10;
+
             ctx.save();
-            ctx.globalCompositeOperation = drawMode === 'erase' ? 'destination-out' : 'source-over';
-            ctx.strokeStyle = drawColor;
-            ctx.lineWidth = brushSize;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            const firstPoint = currentStroke[0];
-            if (firstPoint) ctx.moveTo(firstPoint.x, firstPoint.y);
-            for (let i = 1; i < currentStroke.length; i++) {
-                const point = currentStroke[i];
-                if (point) ctx.lineTo(point.x, point.y);
-            }
-            ctx.stroke();
+            ctx.translate(box.cx, box.cy);
+            ctx.rotate(degToRad(box.rotation));
+            ctx.strokeStyle = '#a855f7';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 10]);
+            ctx.strokeRect(-box.width / 2, -box.height / 2, box.width, box.height);
+            ctx.setLineDash([]);
+
+            (Object.keys(HANDLE_SIGNS) as ResizeHandle[]).forEach((handle) => {
+                const { sx, sy } = HANDLE_SIGNS[handle];
+                const hx = sx * (box.width / 2);
+                const hy = sy * (box.height / 2);
+                ctx.beginPath();
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#a855f7';
+                ctx.lineWidth = 3;
+                ctx.arc(hx, hy, handleRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            });
+
             ctx.restore();
         }
-    }, [image, elements, selectedId, editingTextId, drawingStrokes, currentStroke, drawColor, brushSize, drawMode, viewportKey]);
+    }, [image, elements, selectedId, editingTextId, drawingStrokes, currentStroke, drawColor, brushSize, drawMode, drawLayer, viewportKey]);
 
 
 
@@ -376,6 +518,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             y: image.height / 2,
             fontSize: getDefaultFontSize(),
             color: '#ffffff',
+            strokeColor: '#000000',
             fontFamily: DEFAULT_FONT_STACK,
             bgColor: 'transparent',
             rotation: 0,
@@ -487,22 +630,42 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             return;
         }
 
-        // Find clicked element (reverse order for z-index)
-        const clicked = [...elements].reverse().find(el => {
-            if (el.type === 'text') {
-                const lines = el.content.split('\n').length ? el.content.split('\n') : [''];
-                const lineHeight = el.fontSize * 1.12;
-                const height = lineHeight * lines.length;
-                const width = Math.max(...lines.map(line => line.length ? line.length * (el.fontSize * 0.6) : el.fontSize * 0.6), el.fontSize);
-                const alignOffset = el.align === 'left' ? -width / 2 : el.align === 'right' ? width / 2 : 0;
-                return Math.abs(x - (el.x + alignOffset)) < width / 2 && Math.abs(y - el.y) < height / 2;
-            } else if (el.type === 'emoji') {
-                return Math.abs(x - el.x) < el.size / 2 && Math.abs(y - el.y) < el.size / 2;
-            } else if (el.type === 'image') {
-                return Math.abs(x - el.x) < el.width / 2 && Math.abs(y - el.y) < el.height / 2;
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+
+        if (selectedId && ctx) {
+            const selectedEl = elements.find((el) => el.id === selectedId);
+            if (selectedEl) {
+                const box = getElementBox(ctx, selectedEl);
+                const handleHitRadius = 18;
+                const hit = getHandlePoints(box).find(({ point }) => dist2(point, { x, y }) <= handleHitRadius * handleHitRadius);
+                if (hit) {
+                    const { sx, sy } = HANDLE_SIGNS[hit.handle];
+                    const r = degToRad(box.rotation);
+                    const fixedLocal = { x: -sx * (box.width / 2), y: -sy * (box.height / 2) };
+                    const fixedRotated = rotatePoint(fixedLocal, r);
+                    resizeRef.current = {
+                        elementId: selectedEl.id,
+                        handle: hit.handle,
+                        fixedCorner: { x: box.cx + fixedRotated.x, y: box.cy + fixedRotated.y },
+                        startBox: { width: box.width, height: box.height },
+                        start:
+                            selectedEl.type === 'text'
+                                ? { x: selectedEl.x, y: selectedEl.y, fontSize: selectedEl.fontSize }
+                                : selectedEl.type === 'emoji'
+                                    ? { x: selectedEl.x, y: selectedEl.y, size: selectedEl.size }
+                                    : { x: selectedEl.x, y: selectedEl.y, width: selectedEl.width, height: selectedEl.height },
+                        rotation: box.rotation,
+                    };
+                    setIsResizing(true);
+                    setIsDragging(false);
+                    return;
+                }
             }
-            return false;
-        });
+        }
+
+        // Find clicked element (reverse order for z-index)
+        const clicked = ctx ? [...elements].reverse().find((el) => pointInBox({ x, y }, getElementBox(ctx, el))) : undefined;
 
         if (clicked) {
             setSelectedId(clicked.id);
@@ -521,6 +684,48 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         // Drawing mode
         if (isDrawing && currentStroke) {
             setCurrentStroke([...currentStroke, { x, y }]);
+            return;
+        }
+
+        if (isResizing && resizeRef.current) {
+            const resize = resizeRef.current;
+            const { sx, sy } = HANDLE_SIGNS[resize.handle];
+            const r = degToRad(resize.rotation);
+            const diffLocal = rotatePoint({ x: x - resize.fixedCorner.x, y: y - resize.fixedCorner.y }, -r);
+
+            const safeStartWidth = Math.max(1, resize.startBox.width);
+            const safeStartHeight = Math.max(1, resize.startBox.height);
+            const scaleX = Math.abs(diffLocal.x) / safeStartWidth;
+            const scaleY = Math.abs(diffLocal.y) / safeStartHeight;
+            const scale = Math.max(0.1, Math.max(scaleX, scaleY));
+            const maxFontSize = getMaxFontSize();
+
+            const newHalfW = (resize.startBox.width * scale) / 2;
+            const newHalfH = (resize.startBox.height * scale) / 2;
+            const centerOffset = rotatePoint({ x: sx * newHalfW, y: sy * newHalfH }, r);
+            const nextCenter = { x: resize.fixedCorner.x + centerOffset.x, y: resize.fixedCorner.y + centerOffset.y };
+
+            setElements((prev) =>
+                prev.map((el) => {
+                    if (el.id !== resize.elementId) return el;
+                    if (el.type === 'text' && resize.start.fontSize) {
+                        return { ...el, x: nextCenter.x, y: nextCenter.y, fontSize: clamp(resize.start.fontSize * scale, 12, maxFontSize) };
+                    }
+                    if (el.type === 'emoji' && resize.start.size) {
+                        return { ...el, x: nextCenter.x, y: nextCenter.y, size: Math.max(20, resize.start.size * scale) };
+                    }
+                    if (el.type === 'image' && resize.start.width && resize.start.height) {
+                        return {
+                            ...el,
+                            x: nextCenter.x,
+                            y: nextCenter.y,
+                            width: Math.max(20, resize.start.width * scale),
+                            height: Math.max(20, resize.start.height * scale),
+                        };
+                    }
+                    return el;
+                })
+            );
             return;
         }
 
@@ -548,6 +753,8 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         setIsDrawing(false);
         setCurrentStroke(null);
         setIsDragging(false);
+        setIsResizing(false);
+        resizeRef.current = null;
     };
 
     const handleDoubleClick = (e: React.MouseEvent) => {
@@ -555,16 +762,11 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         if (!coords) return;
         const { x, y } = coords;
 
-        const clicked = [...elements].reverse().find(el => {
-            if (el.type === 'text') {
-                return Math.abs(x - el.x) < el.fontSize * 2 && Math.abs(y - el.y) < el.fontSize;
-            } else if (el.type === 'emoji') {
-                return Math.abs(x - el.x) < el.size / 2 && Math.abs(y - el.y) < el.size / 2;
-            } else if (el.type === 'image') {
-                return Math.abs(x - el.x) < el.width / 2 && Math.abs(y - el.y) < el.height / 2;
-            }
-            return false;
-        });
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        const clicked = ctx
+            ? [...elements].reverse().find((el) => el.type === 'text' && pointInBox({ x, y }, getElementBox(ctx, el)))
+            : undefined;
 
         if (clicked && clicked.type === 'text') {
             setEditingTextId(clicked.id);
@@ -624,8 +826,63 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
     };
 
+    const moveSelectedLayer = (direction: 'front' | 'back') => {
+        if (!selectedId) return;
+        setElements((prev) => {
+            const idx = prev.findIndex((el) => el.id === selectedId);
+            if (idx === -1) return prev;
+            if (direction === 'front' && idx === prev.length - 1) return prev;
+            if (direction === 'back' && idx === 0) return prev;
+            const next = prev.slice();
+            const [item] = next.splice(idx, 1);
+            if (!item) return prev;
+            if (direction === 'front') next.push(item);
+            else next.unshift(item);
+            return next;
+        });
+    };
+
     const selectedElement = elements.find(el => el.id === selectedId);
     const editingElement = elements.find(el => el.id === editingTextId) as TextElement | undefined;
+    const editingStrokeColor =
+        editingElement?.strokeColor || (editingElement?.color === '#ffffff' ? '#000000' : '#ffffff');
+    const editingTextareaWidthPx = (() => {
+        if (!editingElement || !image) return 0;
+        const canvasCssWidth = image.width * scale;
+        const maxPx = Math.min(560, canvasCssWidth * 0.95);
+        const minPx = Math.min(200, maxPx);
+        const ctx = canvasRef.current?.getContext('2d');
+        if (ctx) {
+            const { maxWidth } = getTextMetrics(ctx, editingElement);
+            const desiredPx = (maxWidth + 24) * scale;
+            return clamp(desiredPx, minPx, maxPx);
+        }
+        const fallback = canvasCssWidth * (isNarrow ? 0.9 : 0.6);
+        return clamp(fallback, minPx, maxPx);
+    })();
+    const editingTextareaLeftPx = (() => {
+        if (!editingElement || !image) return 0;
+        const canvasCssWidth = image.width * scale;
+        const margin = 12;
+        const minX = editingTextareaWidthPx / 2 + margin;
+        const maxX = canvasCssWidth - editingTextareaWidthPx / 2 - margin;
+        if (maxX <= minX) return canvasCssWidth / 2;
+        return clamp(editingElement.x * scale, minX, maxX);
+    })();
+    const editingTextareaTopPx = (() => {
+        if (!editingElement || !image) return 0;
+        const canvasCssHeight = image.height * scale;
+        const margin = 12;
+        const lineCount = getTextLines(editingElement.content).length;
+        const approxHeightPx = Math.max(
+            editingElement.fontSize * scale * 1.5,
+            (lineCount * editingElement.fontSize * 1.12 + 24) * scale
+        );
+        const minY = approxHeightPx / 2 + margin;
+        const maxY = canvasCssHeight - approxHeightPx / 2 - margin;
+        if (maxY <= minY) return canvasCssHeight / 2;
+        return clamp(editingElement.y * scale, minY, maxY);
+    })();
 
     let panelContent: React.ReactNode = null;
 
@@ -654,17 +911,36 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     } else if (activeTool === 'add-image') {
         panelContent = (
             <div className="p-2">
-                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add sticker</p>
-                <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-48 overflow-y-auto">
-                    {STICKERS.map((sticker, i) => (
-                        <button
-                            key={i}
-                            onClick={() => handleAddImage(sticker.src)}
-                            className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
-                        >
-                            <img src={sticker.src} alt={sticker.name} className="w-full h-full object-contain" />
-                        </button>
-                    ))}
+                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add image</p>
+                <div className="max-h-60 overflow-y-auto space-y-3 pr-1">
+                    <div className="space-y-1.5">
+                        <p className="text-[10px] text-white/50 uppercase tracking-wide px-1">Stickers</p>
+                        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+                            {STICKERS.map((sticker) => (
+                                <button
+                                    key={sticker.src}
+                                    onClick={() => handleAddImage(sticker.src)}
+                                    className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
+                                >
+                                    <img src={sticker.src} alt={sticker.name} className="w-full h-full object-contain" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <p className="text-[10px] text-white/50 uppercase tracking-wide px-1">NFL</p>
+                        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+                            {NFL_LOGOS.map((logo) => (
+                                <button
+                                    key={logo.src}
+                                    onClick={() => handleAddImage(logo.src)}
+                                    className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
+                                >
+                                    <img src={logo.src} alt={logo.name} className="w-full h-full object-contain" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -721,60 +997,96 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         </button>
                     </div>
                 </div>
+                <div className="space-y-1.5">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Layer</p>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            onClick={() => setDrawLayer('behind')}
+                            className={clsx(
+                                "py-2 rounded-lg border text-xs font-semibold transition-colors",
+                                drawLayer === 'behind' ? "bg-white/10 border-white/40 text-white" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+                            )}
+                        >
+                            Behind
+                        </button>
+                        <button
+                            onClick={() => setDrawLayer('front')}
+                            className={clsx(
+                                "py-2 rounded-lg border text-xs font-semibold transition-colors",
+                                drawLayer === 'front' ? "bg-white/10 border-white/40 text-white" : "bg-white/5 border-white/10 text-white/70 hover:text-white"
+                            )}
+                        >
+                            Front
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     } else if (selectedElement && selectedElement.type === 'text') {
         panelContent = (
-                <div className="p-3 space-y-2">
-                <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Text Style</p>
-                {/* Color Swatches */}
-                <div className="grid grid-cols-7 gap-1">
-                    {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map(c => (
+                <div className="p-2 space-y-2">
+                <div className="flex items-center justify-between">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Layer</p>
+                    <div className="flex items-center gap-1">
                         <button
-                            key={c}
-                            onClick={() => updateStyle('color', c)}
-                            className={clsx(
-                                "w-6 h-6 rounded-md border-2 transition-transform mx-auto",
-                                selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
-                            )}
-                            style={{ backgroundColor: c }}
-                        />
-                    ))}
+                            onClick={() => moveSelectedLayer('back')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Back
+                        </button>
+                        <button
+                            onClick={() => moveSelectedLayer('front')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Front
+                        </button>
+                    </div>
+                </div>
+                <div className="space-y-1">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Text</p>
+                    <div className="grid grid-cols-7 gap-1">
+                        {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+                            <button
+                                key={c}
+                                onClick={() => updateStyle('color', c)}
+                                className={clsx(
+                                    "w-6 h-6 rounded-md border-2 transition-transform mx-auto",
+                                    selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
+                                )}
+                                style={{ backgroundColor: c }}
+                            />
+                        ))}
+                    </div>
+                </div>
+                <div className="space-y-1">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Border</p>
+                    <div className="grid grid-cols-7 gap-1">
+                        {['#000000', '#ffffff', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+                            <button
+                                key={c}
+                                onClick={() => updateStyle('strokeColor', c)}
+                                className={clsx(
+                                    "w-6 h-6 rounded-md border-2 transition-transform mx-auto",
+                                    (selectedElement as TextElement).strokeColor === c
+                                        ? "border-white scale-110"
+                                        : "border-transparent hover:scale-105"
+                                )}
+                                style={{ backgroundColor: c }}
+                            />
+                        ))}
+                    </div>
                 </div>
                 {/* Font Size */}
                 <div className="space-y-1">
                     <p className="text-[9px] text-white/50 uppercase tracking-wide">Font Size</p>
                     <input
                         type="range"
-                        min="12" max="200"
+                        min="12"
+                        max={getMaxFontSize()}
                         value={(selectedElement as TextElement).fontSize}
-                        onChange={(e) => updateStyle('fontSize', parseInt(e.target.value))}
+                        onChange={(e) => updateStyle('fontSize', clamp(Number(e.target.value), 12, getMaxFontSize()))}
                         className="w-full accent-purple-500 h-1"
                     />
-                </div>
-                {/* Font Family */}
-                <div className="space-y-1">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Font</p>
-                    <div
-                        className="flex items-center gap-1 overflow-x-auto overflow-y-hidden pb-1 pr-1 rounded-lg bg-white/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                        style={{ WebkitOverflowScrolling: 'touch' }}
-                    >
-                        {FONT_OPTIONS.map((font) => (
-                            <button
-                                key={font.key}
-                                onClick={() => updateStyle('fontFamily', font.stack)}
-                                className={clsx(
-                                    "shrink-0 px-1.5 py-0.5 rounded-md border text-[9px] font-semibold transition-colors text-left whitespace-nowrap",
-                                    (selectedElement as TextElement).fontFamily === font.stack
-                                        ? "bg-white/10 border-white/40 text-white"
-                                        : "bg-white/5 border-white/10 text-white/70 hover:text-white"
-                                )}
-                                style={{ fontFamily: font.stack }}
-                            >
-                                {font.label}
-                            </button>
-                        ))}
-                    </div>
                 </div>
                 {/* Alignment */}
                 <div className="space-y-1">
@@ -788,15 +1100,15 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             <button
                                 key={key}
                                 onClick={() => updateStyle('align', key)}
+                                aria-label={`Align ${key}`}
                                 className={clsx(
-                                    "flex items-center justify-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-semibold transition-colors",
+                                    "w-10 h-8 flex items-center justify-center rounded-md border transition-colors",
                                     (selectedElement as TextElement).align === key
                                         ? "bg-white/10 border-white/40 text-white"
                                         : "bg-white/5 border-white/10 text-white/70 hover:text-white"
                                 )}
                             >
-                                <Icon className="w-3 h-3" />
-                                <span className="capitalize">{key}</span>
+                                <Icon className="w-4 h-4" />
                             </button>
                         ))}
                     </div>
@@ -817,6 +1129,23 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     } else if (selectedElement && selectedElement.type === 'emoji') {
         panelContent = (
             <div className="p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Layer</p>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => moveSelectedLayer('back')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Back
+                        </button>
+                        <button
+                            onClick={() => moveSelectedLayer('front')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Front
+                        </button>
+                    </div>
+                </div>
                 <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Emoji Size</p>
                 <input
                     type="range"
@@ -838,6 +1167,23 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     } else if (selectedElement && selectedElement.type === 'image') {
         panelContent = (
             <div className="p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Layer</p>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => moveSelectedLayer('back')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Back
+                        </button>
+                        <button
+                            onClick={() => moveSelectedLayer('front')}
+                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            Front
+                        </button>
+                    </div>
+                </div>
                 <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Image Size</p>
                 <input
                     type="range"
@@ -900,16 +1246,14 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         autoFocus
                         style={{
                                 position: 'absolute',
-                                left: `${(editingElement.x + (editingElement.align === 'left' ? -getDefaultTextareaWidth() / 2 : editingElement.align === 'right' ? getDefaultTextareaWidth() / 2 : 0)) * scale}px`,
-                                top: `${editingElement.y * scale}px`,
+                                left: `${editingTextareaLeftPx}px`,
+                                top: `${editingTextareaTopPx}px`,
                                 transform: `translate(-50%, -50%) rotate(${editingElement.rotation}deg)`,
                                 fontSize: `${editingElement.fontSize * scale}px`,
                                 color: editingElement.color,
                                 fontFamily: editingElement.fontFamily || 'Impact, Arial Black, sans-serif',
                                 fontWeight: 900,
-                                    textShadow: editingElement.color === '#ffffff'
-                                        ? `-${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 #000, ${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 #000, -${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 #000, ${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 #000`
-                                        : `-${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 #fff, ${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 #fff, -${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 #fff, ${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 #fff`,
+                                    textShadow: `-${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, -${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}`,
                                     background: 'transparent',
                                     border: 'none',
                                     outline: 'none',
@@ -917,7 +1261,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                     resize: 'none',
                                     overflow: 'hidden',
                                     whiteSpace: 'pre-wrap',
-                                    width: `${getDefaultTextareaWidth() * scale}px`,
+                                    width: `${editingTextareaWidthPx}px`,
                                     minHeight: `${editingElement.fontSize * scale * 1.5}px`,
                                     height: 'auto',
                                     padding: 0,
