@@ -119,9 +119,12 @@ const STICKERS = [
     { name: 'Thought Cloud', src: '/stickers/sticker_speech_bubble_2_1764881039454.png' },
     { name: 'Up Arrow', src: '/stickers/sticker_arrow_up_1764881051412.png' },
     { name: 'Down Arrow', src: '/stickers/sticker_arrow_down_1764881063242.png' },
-    { name: 'Sunglasses', src: '/stickers/sticker_sunglasses_1764881076117.png' },
+    { name: 'Deal With It', src: '/stickers/sticker_sunglasses_1764881076117.png' },
     { name: 'Santa Hat', src: '/stickers/sticker_santa_hat_1764881088225.png' },
-    { name: 'Fire', src: '/stickers/sticker_fire_1764881100984.png' },
+    { name: 'Bro Hat', src: '/stickers/sticker_bro_hat.png' },
+    { name: 'Censored Bar', src: '/stickers/sticker_censored.png' },
+    { name: 'Red Circle', src: '/stickers/sticker_red_circle.png' },
+    { name: 'WOW Burst', src: '/stickers/sticker_wow_burst.png' },
 ];
 
 const NFL_LOGOS = [
