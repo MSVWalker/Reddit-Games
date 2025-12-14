@@ -157,6 +157,7 @@ const NFL_LOGOS = [
     { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
     { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
     { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Green Bay Packers (Alt)', src: '/stickers/nfl/green-bay-packers-alt.png' },
     { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
     // NFC South
     { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
