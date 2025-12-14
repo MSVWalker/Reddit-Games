@@ -31,6 +31,7 @@ interface TextElement {
     color: string;
     strokeColor: string;
     wrapWidth: number;
+    boxHeight: number;
     bgColor: string;
     rotation: number;
     align: 'left' | 'center' | 'right';
@@ -90,6 +91,8 @@ type ResizeState = {
         x: number;
         y: number;
         fontSize?: number;
+        wrapWidth?: number;
+        boxHeight?: number;
         size?: number;
         width?: number;
         height?: number;
@@ -120,38 +123,46 @@ const STICKERS = [
 ];
 
 const NFL_LOGOS = [
-    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
-    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
-    { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
+    // AFC East
     { name: 'Buffalo Bills', src: '/stickers/nfl/buffalo-bills.png' },
-    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
-    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
+    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
+    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
+    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
+    // AFC North
+    { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
     { name: 'Cincinnati Bengals', src: '/stickers/nfl/cincinnati-bengals.png' },
     { name: 'Cleveland Browns', src: '/stickers/nfl/cleveland-browns.png' },
-    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
-    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
-    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
-    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
+    // AFC South
     { name: 'Houston Texans', src: '/stickers/nfl/houston-texans.png' },
     { name: 'Indianapolis Colts', src: '/stickers/nfl/indianapolis-colts.png' },
     { name: 'Jacksonville Jaguars', src: '/stickers/nfl/jacksonville-jaguars.png' },
+    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
+    // AFC West
+    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
     { name: 'Kansas City Chiefs', src: '/stickers/nfl/kansas-city-chiefs.png' },
     { name: 'Las Vegas Raiders', src: '/stickers/nfl/las-vegas-raiders.png' },
     { name: 'Los Angeles Chargers', src: '/stickers/nfl/los-angeles-chargers.png' },
-    { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
-    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
-    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
-    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
-    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    // NFC East
+    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
     { name: 'New York Giants', src: '/stickers/nfl/new-york-giants.png' },
-    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
     { name: 'Philadelphia Eagles', src: '/stickers/nfl/philadelphia-eagles.png' },
-    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
+    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
+    // NFC North
+    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
+    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
+    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
+    // NFC South
+    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
+    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
+    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
+    // NFC West
+    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
+    { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
     { name: 'San Francisco 49ers', src: '/stickers/nfl/san-francisco-49ers.png' },
     { name: 'Seattle Seahawks', src: '/stickers/nfl/seattle-seahawks.png' },
-    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
-    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
-    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
 ];
 
 const HANDLE_SIGNS: Record<ResizeHandle, { sx: -1 | 1; sy: -1 | 1 }> = {
@@ -160,6 +171,8 @@ const HANDLE_SIGNS: Record<ResizeHandle, { sx: -1 | 1; sy: -1 | 1 }> = {
     se: { sx: 1, sy: 1 },
     sw: { sx: -1, sy: 1 },
 };
+
+const TEXT_BOX_PADDING = 14;
 
 const degToRad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -233,7 +246,11 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, content: string, maxWidth:
 const getTextMetrics = (ctx: CanvasRenderingContext2D, el: TextElement) => {
     const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
     ctx.font = `900 ${el.fontSize}px ${fontStack}`;
-    const wrapWidth = Math.max(1, el.wrapWidth);
+    const desiredWrapWidth =
+        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
+            ? el.wrapWidth
+            : Math.max(120, el.fontSize * 6);
+    const wrapWidth = Math.max(1, desiredWrapWidth);
     const lines = wrapTextLines(ctx, el.content, wrapWidth);
     const lineHeight = el.fontSize * 1.12;
     const measuredMax = Math.max(...lines.map((line) => ctx.measureText(line).width), 0);
@@ -249,9 +266,21 @@ const getElementBox = (ctx: CanvasRenderingContext2D, el: CanvasElement): Elemen
     if (el.type === 'emoji') {
         return { cx: el.x, cy: el.y, width: el.size, height: el.size, rotation: el.rotation };
     }
-    const { maxWidth, height } = getTextMetrics(ctx, el);
-    const padding = 14;
-    return { cx: el.x, cy: el.y, width: maxWidth + padding * 2, height: height + padding * 2, rotation: el.rotation };
+    const desiredWrapWidth =
+        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
+            ? el.wrapWidth
+            : Math.max(120, el.fontSize * 6);
+    const wrapWidth = Math.max(1, desiredWrapWidth);
+    const { height } = getTextMetrics(ctx, el);
+    const desiredBoxHeight = typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? el.boxHeight : height;
+    const boxHeight = Math.max(height, desiredBoxHeight);
+    return {
+        cx: el.x,
+        cy: el.y,
+        width: wrapWidth + TEXT_BOX_PADDING * 2,
+        height: boxHeight + TEXT_BOX_PADDING * 2,
+        rotation: el.rotation,
+    };
 };
 
 const pointInBox = (point: Point, box: ElementBox) => {
@@ -478,19 +507,21 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             if (el.type === 'text') {
                 const align = el.align ?? 'center';
                 const { lines, lineHeight, maxWidth, height, fontStack } = getTextMetrics(ctx, el);
+                const wrapWidth =
+                    typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth) ? el.wrapWidth : maxWidth;
                 ctx.font = `900 ${el.fontSize}px ${fontStack}`;
                 ctx.textAlign = align;
                 ctx.textBaseline = 'middle';
 
                 const startY = -((lines.length - 1) * lineHeight) / 2;
-                const textX = align === 'left' ? -maxWidth / 2 : align === 'right' ? maxWidth / 2 : 0;
+                const textX = align === 'left' ? -wrapWidth / 2 : align === 'right' ? wrapWidth / 2 : 0;
 
                 ctx.translate(el.x, el.y);
                 ctx.rotate(degToRad(el.rotation));
 
                 if (el.bgColor !== 'transparent') {
                     ctx.fillStyle = el.bgColor;
-                    ctx.fillRect(-maxWidth / 2 - 12, startY - el.fontSize / 2 - 6, maxWidth + 24, height + 12);
+                    ctx.fillRect(-wrapWidth / 2 - 12, startY - el.fontSize / 2 - 6, wrapWidth + 24, height + 12);
                 }
 
                 ctx.fillStyle = el.color;
@@ -561,17 +592,19 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     // Handlers
 	    const handleAddText = () => {
 	        if (!image) return;
+	        const fontSize = getDefaultFontSize();
 	        const newEl: TextElement = {
 	            id: `text-${Date.now()}`,
 	            type: 'text',
 	            content: 'DOUBLE TAP',
 	            x: image.width / 2,
 	            y: image.height / 2,
-	            fontSize: getDefaultFontSize(),
+	            fontSize,
 	            color: '#ffffff',
 	            strokeColor: '#000000',
 	            fontFamily: DEFAULT_FONT_STACK,
-	            wrapWidth: clamp(image.width * 0.9, Math.min(160, image.width * 0.95), image.width * 0.95),
+	            wrapWidth: clamp(image.width * 0.4, 80, image.width * 0.95),
+	            boxHeight: Math.max(Math.round(fontSize * 1.6), 60),
 	            bgColor: 'transparent',
 	            rotation: 0,
 	            align: 'center',
@@ -697,19 +730,19 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     const r = degToRad(box.rotation);
                     const fixedLocal = { x: -sx * (box.width / 2), y: -sy * (box.height / 2) };
                     const fixedRotated = rotatePoint(fixedLocal, r);
-                    resizeRef.current = {
-                        elementId: selectedEl.id,
-                        handle: hit.handle,
-                        fixedCorner: { x: box.cx + fixedRotated.x, y: box.cy + fixedRotated.y },
-                        startBox: { width: box.width, height: box.height },
-                        start:
-                            selectedEl.type === 'text'
-                                ? { x: selectedEl.x, y: selectedEl.y, fontSize: selectedEl.fontSize }
-                                : selectedEl.type === 'emoji'
-                                    ? { x: selectedEl.x, y: selectedEl.y, size: selectedEl.size }
-                                    : { x: selectedEl.x, y: selectedEl.y, width: selectedEl.width, height: selectedEl.height },
-                        rotation: box.rotation,
-                    };
+	                    resizeRef.current = {
+	                        elementId: selectedEl.id,
+	                        handle: hit.handle,
+	                        fixedCorner: { x: box.cx + fixedRotated.x, y: box.cy + fixedRotated.y },
+	                        startBox: { width: box.width, height: box.height },
+	                        start:
+	                            selectedEl.type === 'text'
+	                                ? { x: selectedEl.x, y: selectedEl.y, wrapWidth: box.width - TEXT_BOX_PADDING * 2, boxHeight: box.height - TEXT_BOX_PADDING * 2 }
+	                                : selectedEl.type === 'emoji'
+	                                    ? { x: selectedEl.x, y: selectedEl.y, size: selectedEl.size }
+	                                    : { x: selectedEl.x, y: selectedEl.y, width: selectedEl.width, height: selectedEl.height },
+	                        rotation: box.rotation,
+	                    };
                     setIsResizing(true);
                     setIsDragging(false);
                     return;
@@ -750,30 +783,52 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             const safeStartHeight = Math.max(1, resize.startBox.height);
             const scaleX = Math.abs(diffLocal.x) / safeStartWidth;
             const scaleY = Math.abs(diffLocal.y) / safeStartHeight;
-            const scale = Math.max(0.1, Math.max(scaleX, scaleY));
-            const maxFontSize = getMaxFontSize();
+            const uniformScale = Math.max(0.1, Math.max(scaleX, scaleY));
 
-            const newHalfW = (resize.startBox.width * scale) / 2;
-            const newHalfH = (resize.startBox.height * scale) / 2;
+            const newHalfW = (resize.startBox.width * uniformScale) / 2;
+            const newHalfH = (resize.startBox.height * uniformScale) / 2;
             const centerOffset = rotatePoint({ x: sx * newHalfW, y: sy * newHalfH }, r);
-            const nextCenter = { x: resize.fixedCorner.x + centerOffset.x, y: resize.fixedCorner.y + centerOffset.y };
+            const uniformNextCenter = { x: resize.fixedCorner.x + centerOffset.x, y: resize.fixedCorner.y + centerOffset.y };
 
             setElements((prev) =>
                 prev.map((el) => {
                     if (el.id !== resize.elementId) return el;
-                    if (el.type === 'text' && resize.start.fontSize) {
-                        return { ...el, x: nextCenter.x, y: nextCenter.y, fontSize: clamp(resize.start.fontSize * scale, 12, maxFontSize) };
-                    }
-                    if (el.type === 'emoji' && resize.start.size) {
-                        return { ...el, x: nextCenter.x, y: nextCenter.y, size: Math.max(20, resize.start.size * scale) };
-                    }
-                    if (el.type === 'image' && resize.start.width && resize.start.height) {
+                    if (el.type === 'text' && image) {
+                        const minWrapWidth = 60;
+                        const maxWrapWidth = image.width * 0.95;
+                        const minBoxHeight = Math.max(40, el.fontSize * 1.2);
+                        const maxBoxHeight = image.height * 0.95;
+
+                        const boxWidth = clamp(
+                            Math.abs(diffLocal.x),
+                            TEXT_BOX_PADDING * 2 + minWrapWidth,
+                            TEXT_BOX_PADDING * 2 + maxWrapWidth
+                        );
+                        const boxHeight = clamp(
+                            Math.abs(diffLocal.y),
+                            TEXT_BOX_PADDING * 2 + minBoxHeight,
+                            TEXT_BOX_PADDING * 2 + maxBoxHeight
+                        );
+
+                        const nextCenter = { x: (resize.fixedCorner.x + x) / 2, y: (resize.fixedCorner.y + y) / 2 };
                         return {
                             ...el,
                             x: nextCenter.x,
                             y: nextCenter.y,
-                            width: Math.max(20, resize.start.width * scale),
-                            height: Math.max(20, resize.start.height * scale),
+                            wrapWidth: clamp(boxWidth - TEXT_BOX_PADDING * 2, minWrapWidth, maxWrapWidth),
+                            boxHeight: clamp(boxHeight - TEXT_BOX_PADDING * 2, minBoxHeight, maxBoxHeight),
+                        };
+                    }
+                    if (el.type === 'emoji' && resize.start.size) {
+                        return { ...el, x: uniformNextCenter.x, y: uniformNextCenter.y, size: Math.max(20, resize.start.size * uniformScale) };
+                    }
+                    if (el.type === 'image' && resize.start.width && resize.start.height) {
+                        return {
+                            ...el,
+                            x: uniformNextCenter.x,
+                            y: uniformNextCenter.y,
+                            width: Math.max(20, resize.start.width * uniformScale),
+                            height: Math.max(20, resize.start.height * uniformScale),
                         };
                     }
                     return el;
@@ -902,16 +957,18 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const editingTextareaWidthPx = (() => {
         if (!editingElement || !image) return 0;
         const canvasCssWidth = image.width * scale;
-        const maxPx = Math.min(560, canvasCssWidth * 0.95);
-        const minPx = Math.min(200, maxPx);
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) {
-            const { maxWidth } = getTextMetrics(ctx, editingElement);
-            const desiredPx = (maxWidth + 24) * scale;
-            return clamp(desiredPx, minPx, maxPx);
-        }
-        const fallback = canvasCssWidth * (isNarrow ? 0.9 : 0.6);
-        return clamp(fallback, minPx, maxPx);
+        const maxPx = canvasCssWidth * 0.95;
+        const minPx = Math.min(160, maxPx);
+        const desiredWrapWidth =
+            typeof editingElement.wrapWidth === 'number' && Number.isFinite(editingElement.wrapWidth)
+                ? editingElement.wrapWidth
+                : (() => {
+                    const ctx = canvasRef.current?.getContext('2d');
+                    if (!ctx) return Math.max(120, (image.width * 0.4));
+                    return getTextMetrics(ctx, editingElement).maxWidth;
+                })();
+        const desiredPx = desiredWrapWidth * scale;
+        return clamp(desiredPx, minPx, maxPx);
     })();
     const editingTextareaLeftPx = (() => {
         if (!editingElement || !image) return 0;
@@ -968,43 +1025,24 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 </div>
             </div>
         );
-    } else if (activeTool === 'add-image') {
-        panelContent = (
-            <div className="p-2">
-                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add image</p>
-                <div className="max-h-60 overflow-y-auto space-y-3 pr-1">
-                    <div className="space-y-1.5">
-                        <p className="text-[10px] text-white/50 uppercase tracking-wide px-1">Stickers</p>
-                        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
-                            {STICKERS.map((sticker) => (
-                                <button
-                                    key={sticker.src}
-                                    onClick={() => handleAddImage(sticker.src)}
-                                    className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
-                                >
-                                    <img src={sticker.src} alt={sticker.name} className="w-full h-full object-contain" />
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <p className="text-[10px] text-white/50 uppercase tracking-wide px-1">NFL</p>
-                        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
-                            {NFL_LOGOS.map((logo) => (
-                                <button
-                                    key={logo.src}
-                                    onClick={() => handleAddImage(logo.src)}
-                                    className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
-                                >
-                                    <img src={logo.src} alt={logo.name} className="w-full h-full object-contain" />
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    } else if (activeTool === 'draw') {
+	    } else if (activeTool === 'add-image') {
+	        panelContent = (
+	            <div className="p-2">
+	                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add image</p>
+	                <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-60 overflow-y-auto pr-1">
+	                    {[...STICKERS, ...NFL_LOGOS].map((item) => (
+	                        <button
+	                            key={item.src}
+	                            onClick={() => handleAddImage(item.src)}
+	                            className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
+	                        >
+	                            <img src={item.src} alt={item.name} className="w-full h-full object-contain" />
+	                        </button>
+	                    ))}
+	                </div>
+	            </div>
+	        );
+	    } else if (activeTool === 'draw') {
         panelContent = (
             <div className="p-3 space-y-3">
                 <div className="space-y-1.5">
@@ -1084,61 +1122,61 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         );
     } else if (selectedElement && selectedElement.type === 'text') {
         panelContent = (
-                <div className="p-2 space-y-2">
+                <div className="p-2 space-y-1.5">
                 <div className="flex items-center justify-between">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Layer</p>
+                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Layer</p>
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => moveSelectedLayer('back')}
-                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                            className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
                         >
                             Back
                         </button>
                         <button
                             onClick={() => moveSelectedLayer('front')}
-                            className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                            className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
                         >
                             Front
                         </button>
                     </div>
                 </div>
-                <div className="space-y-1">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Text</p>
-	                    <div className="grid grid-cols-7 gap-1">
-	                        {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
-	                            <button
-	                                key={c}
-	                                onClick={() => updateStyle('color', c)}
-	                                className={clsx(
-	                                    "w-5 h-5 rounded-md border-2 transition-transform mx-auto",
-	                                    selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
-	                                )}
-	                                style={{ backgroundColor: c }}
-	                            />
-	                        ))}
-	                    </div>
-	                </div>
-	                <div className="space-y-1">
-	                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Border</p>
-	                    <div className="grid grid-cols-7 gap-1">
-	                        {['#000000', '#ffffff', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
-	                            <button
-	                                key={c}
-	                                onClick={() => updateStyle('strokeColor', c)}
-	                                className={clsx(
-	                                    "w-5 h-5 rounded-md border-2 transition-transform mx-auto",
-	                                    (selectedElement as TextElement).strokeColor === c
-	                                        ? "border-white scale-110"
-	                                        : "border-transparent hover:scale-105"
-	                                )}
-	                                style={{ backgroundColor: c }}
-	                            />
-	                        ))}
-	                    </div>
-	                </div>
+                <div className="space-y-0.5">
+                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Text</p>
+		                    <div className="grid grid-cols-7 gap-0.5">
+		                        {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+		                            <button
+		                                key={c}
+		                                onClick={() => updateStyle('color', c)}
+		                                className={clsx(
+		                                    "w-4 h-4 rounded border-2 transition-transform mx-auto",
+		                                    selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
+		                                )}
+		                                style={{ backgroundColor: c }}
+		                            />
+		                        ))}
+		                    </div>
+		                </div>
+		                <div className="space-y-0.5">
+		                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Border</p>
+		                    <div className="grid grid-cols-7 gap-0.5">
+		                        {['#000000', '#ffffff', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+		                            <button
+		                                key={c}
+		                                onClick={() => updateStyle('strokeColor', c)}
+		                                className={clsx(
+		                                    "w-4 h-4 rounded border-2 transition-transform mx-auto",
+		                                    (selectedElement as TextElement).strokeColor === c
+		                                        ? "border-white scale-110"
+		                                        : "border-transparent hover:scale-105"
+		                                )}
+		                                style={{ backgroundColor: c }}
+		                            />
+		                        ))}
+		                    </div>
+		                </div>
                 {/* Font Size */}
-                <div className="space-y-1">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Font Size</p>
+                <div className="space-y-0.5">
+                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Size</p>
                     <input
                         type="range"
                         min="12"
@@ -1149,8 +1187,8 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     />
                 </div>
                 {/* Alignment */}
-                <div className="space-y-1">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Alignment</p>
+                <div className="flex items-center justify-between">
+                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Align</p>
                     <div className="flex items-center gap-1">
                         {([
                             { key: 'left', Icon: AlignLeft },
@@ -1162,28 +1200,28 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 onClick={() => updateStyle('align', key)}
                                 aria-label={`Align ${key}`}
                                 className={clsx(
-                                    "w-10 h-8 flex items-center justify-center rounded-md border transition-colors",
+                                    "w-7 h-6 flex items-center justify-center rounded border transition-colors",
                                     (selectedElement as TextElement).align === key
                                         ? "bg-white/10 border-white/40 text-white"
                                         : "bg-white/5 border-white/10 text-white/70 hover:text-white"
                                 )}
                             >
-                                <Icon className="w-4 h-4" />
+                                <Icon className="w-3 h-3" />
                             </button>
                         ))}
                     </div>
                 </div>
                 {/* Rotation */}
-                <div className="space-y-1.5">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Rotation</p>
-                    <input
-                        type="range"
-                        min="-180" max="180"
-                        value={(selectedElement as TextElement).rotation}
-                        onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
-                        className="w-full accent-purple-500 h-1"
-                    />
-                </div>
+		                <div className="space-y-0.5">
+		                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Rotate</p>
+		                    <input
+		                        type="range"
+		                        min="0" max="360"
+		                        value={(selectedElement as TextElement).rotation}
+	                        onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
+	                        className="w-full accent-purple-500 h-1"
+	                    />
+	                </div>
             </div>
         );
     } else if (selectedElement && selectedElement.type === 'emoji') {
