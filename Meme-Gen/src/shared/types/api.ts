@@ -29,11 +29,3 @@ export type SessionResponse = {
   loggedIn: boolean;
   username: string | null;
 };
-
-export type PostMemeResponse = {
-  type: "post-meme";
-  postId: string;
-  url: string;
-  subreddit: string;
-  username: string | null;
-};

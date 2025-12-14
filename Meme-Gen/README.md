@@ -1,13 +1,13 @@
 ## Meme Gen (Reddit Game)
 
-A Devvit-based meme generator that lets Redditors pick a template, add text, emojis, stickers, drawings, and extra images, then download or post the result. The app ships with a playful splash screen, gallery-driven template picker, and a full-screen canvas editor with draggable/rotatable layers.
+A Devvit-based meme generator that lets Redditors pick a template, add text, emojis, stickers, drawings, and extra images, then download the result. The app ships with a playful splash screen, gallery-driven template picker, and a full-screen canvas editor with draggable/rotatable layers.
 
 ### Features
 
 - **Template gallery:** Popular meme bases ready to launch into the editor.
 - **Rich canvas editor:** Drag, rotate, and resize text, emojis, stickers, and uploaded images.
 - **Drawing tools:** Freehand strokes with undo plus custom brush size/color.
-- **One-tap saving:** Export to image; Devvit hooks to create subreddit posts.
+- **One-tap saving:** Export to image for quick sharing anywhere.
 
 ### Prerequisites
 
@@ -40,11 +40,11 @@ A Devvit-based meme generator that lets Redditors pick a template, add text, emo
 ### Project Structure
 
 - `src/client` – React + Vite front end, gallery (`Gallery.tsx`), and canvas editor (`Editor.tsx`).
-- `src/server` – Express API for Devvit (init/increment/decrement plus post-creation hooks).
+- `src/server` – Express API for Devvit (init/increment/decrement plus daily stats).
 - `assets` – App icons, splash art, and meme templates.
-- `devvit.json` – Devvit config (posts, server entry, menu, triggers, dev subreddit).
+- `devvit.json` – Devvit config (posts, server entry, dev subreddit).
 
 ### Notes
 
 - The client uses `/src/client/public` assets for templates and stickers; add new files there to surface in the gallery/editor.
-- The server relies on Devvit `context` and Redis for counts and on-app-install post creation; ensure your subreddit allows the app to post.
+- The server relies on Devvit `context` and Redis for counts.

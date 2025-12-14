@@ -24,24 +24,8 @@
     "media": true,
     "redis": true,
     "reddit": {
-      "enable": true,
-      "scope": "user",
-      "asUser": ["SUBMIT_POST"]
+      "enable": true
     }
-  },
-  "menu": {
-    "items": [
-      {
-        "label": "Create a new post",
-        "description": "meme-gen-1",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/post-create"
-      }
-    ]
-  },
-  "triggers": {
-    "onAppInstall": "/internal/on-app-install"
   },
   "dev": {
     "subreddit": "meme_gen_1_dev"
