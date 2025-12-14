@@ -1,40 +1,84 @@
-import React, { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDown } from 'lucide-react';
+import { incrementDailyCountOnce } from '../lib/dailyCount';
 
-const TEMPLATES = [
-    { src: '/distracted-boyfriend.jpg', name: 'Distracted Boyfriend' },
-    { src: '/drake.jpg', name: 'Drake Hotline' },
-    { src: '/change-my-mind.jpg', name: 'Change My Mind' },
-    { src: '/roll-safe-think-about-it.jpg', name: 'Roll Safe' },
-    { src: '/this-is-fine.jpg', name: 'This Is Fine' },
-    { src: '/they-dont-know.jpg', name: 'They Don\'t Know' },
-    { src: '/surprised-pikachu.jpg', name: 'Surprised Pikachu' },
-    { src: '/monkey-puppet.jpg', name: 'Awkward Monkey' },
-    { src: '/laughing-leo.webp', name: 'Laughing Leo' },
-    { src: '/hide-the-pain-harold.jpg', name: 'Hide the Pain Harold' },
-    { src: '/is-this-a-pigeon.jpg', name: 'Is This a Pigeon?' },
-    { src: '/waiting-skeleton.jpg', name: 'Waiting Skeleton' },
-    { src: '/padme-anakin.jpg', name: 'Padme / Anakin' },
-    { src: '/buttons.jpg', name: 'Buttons' },
-    { src: '/toy-story.jpg', name: 'Toy Story' },
-    { src: '/astronauts.jpg', name: 'Astronauts (Wait It\'s All...)' },
-    { src: '/uno-draw-25.jpg', name: 'UNO Draw 25' },
-    { src: '/batman-slap.jpg', name: 'Batman Slap' },
-    { src: '/left-exit.jpg', name: 'Left Exit 12' },
-    { src: '/disaster-girl.jpg', name: 'Disaster Girl' },
-    { src: '/bernie-i-am-once-again.jpg', name: 'Bernie Once Again' },
-    { src: '/flex-tape.jpg', name: 'Flex Tape' },
-    { src: '/spider-man.jpg', name: 'Spider-Man' },
-    { src: '/squidward-window.jpg', name: 'Squidward Window' },
-    { src: '/leonardo-dicaprio-cheers.jpg', name: 'Leo Cheers' },
-    { src: '/soldier-protecting-child.jpg', name: 'Soldier Protecting Child' },
-    { src: '/grant-gustin-grave.jpg', name: 'Grant Gustin Grave' },
-    { src: '/running-away-balloon.jpg', name: 'Running Away Balloon' },
-    { src: '/three-headed-dragon.jpg', name: 'Three-Headed Dragon' },
-    { src: '/bell-curve.jpg', name: 'Bell Curve' },
-    { src: '/urinal-guy.jpg', name: 'Urinal Guy' },
-    { src: '/yall-got-any-more-of-that.jpg', name: 'Y\'all Got Any More' },
+const MEME_FILES = [
+    'am-i-the-only-one.jpg',
+    'american-gothic-cat.jpg',
+    'ancient-aliens.jpg',
+    'annie.webp',
+    'bad-luck-brian.jpg',
+    'batman-slaps-robin.jpg',
+    'bell-curve.jpg',
+    'bernie-i-am-once-again.jpg',
+    'boardroom-meeting.jpg',
+    'buff-doge-vs-cheems.png',
+    'change-my-mind.jpg',
+    'conspiracy-keanu.jpg',
+    'distracted-boyfriend.jpg',
+    'doge.jpg',
+    'drake-hotline-bling.jpg',
+    'evill-kermit.jpg',
+    'first-world-problems.jpg',
+    'flex-tape.jpg',
+    'futurama-fry.jpg',
+    'grant-gustin-grave.jpg',
+    'gru-plan.jpg',
+    'grumpy-cat.jpg',
+    'hard-to-swallow-pills.jpg',
+    'hidden-the-pain-harold.jpg',
+    'hide-the-pain-harold.jpg',
+    'is-this-a-pigeon.jpg',
+    'is-this-a-pigeon2.jpg',
+    'it-always-has-been.jpg',
+    'laughing-leo-orig.webp',
+    'laughing-leo.webp',
+    'left-exit-off-ramp2.jpg',
+    'leonardo-dicaprio-cheers.jpg',
+    'mocking-spongebob-new.jpg',
+    'monkey-puppet-orig.jpg',
+    'monkey-puppet.jpg',
+    'most-interesting-man.jpg',
+    'one-does-not-simply.jpg',
+    'oprah-you-get-a.jpg',
+    'pablo-escobar-waiting.jpg',
+    'peter-parker-cry.jpg',
+    'roll-safe-think-about-it.jpg',
+    'running-away-balloon.jpg',
+    'scumbag-steve.jpg',
+    'soldier-protecting-child.jpg',
+    'spider-man.jpg',
+    'spongebob-ight-imma-head-out.jpg',
+    'squidward-window.jpg',
+    'surprised-pikachu-orig.jpg',
+    'surprised-pikachu.jpg',
+    'that-would-be-great.jpg',
+    'they-dont-know.jpg',
+    'this-is-fine.jpg',
+    'three-headed-dragon.jpg',
+    'toy-story.jpg',
+    'two-buttons.jpg',
+    'unimpressed-seal.jpg',
+    'uno-draw-25.jpg',
+    'urinal-guy.jpg',
+    'waiting-skeleton.jpg',
+    'who-killed-hannibal.jpg',
+    'woman-yelling-cat.jpg',
+    'x-all-the-y.jpg',
+    'yall-got-any-more-of-that.jpg',
 ];
+
+const formatName = (file: string) =>
+    file
+        .replace(/\.[^.]+$/, '')
+        .replace(/-/g, ' ')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+const TEMPLATES = MEME_FILES.map((file) => ({
+    src: `/memes/${file}`,
+    name: formatName(file),
+}));
 
 interface GalleryProps {
     onSelect: (src: string) => void;
@@ -42,6 +86,21 @@ interface GalleryProps {
 
 export function Gallery({ onSelect }: GalleryProps) {
     const uploadInputRef = useRef<HTMLInputElement>(null);
+    const [dailyCount, setDailyCount] = useState<number | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        incrementDailyCountOnce()
+            .then((count) => {
+                if (active) setDailyCount(count);
+            })
+            .catch(() => {
+                if (active) setDailyCount(null);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const handleUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -65,9 +124,9 @@ export function Gallery({ onSelect }: GalleryProps) {
                         <p className="text-xs font-semibold tracking-[0.18em] uppercase text-zinc-400">Templates</p>
                         <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-900">Pick a meme base</h1>
                     </div>
-                    <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white shadow-sm text-sm text-zinc-600">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white shadow-sm text-sm text-zinc-600">
                         <span className="text-orange-500">🔥</span>
-                        <span>872 made today</span>
+                        <span>{dailyCount === null ? '…' : dailyCount} made today</span>
                     </div>
                 </div>
 

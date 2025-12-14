@@ -16,3 +16,24 @@ export type DecrementResponse = {
   postId: string;
   count: number;
 };
+
+export type DailyCountResponse = {
+  type: "daily-count";
+  count: number;
+  date: string; // YYYY-MM-DD (UTC)
+};
+
+export type SessionResponse = {
+  type: "session";
+  subreddit: string;
+  loggedIn: boolean;
+  username: string | null;
+};
+
+export type PostMemeResponse = {
+  type: "post-meme";
+  postId: string;
+  url: string;
+  subreddit: string;
+  username: string | null;
+};

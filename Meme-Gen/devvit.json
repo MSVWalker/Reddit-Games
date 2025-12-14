@@ -20,6 +20,15 @@
     "dir": "dist/server",
     "entry": "index.cjs"
   },
+  "permissions": {
+    "media": true,
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user",
+      "asUser": ["SUBMIT_POST"]
+    }
+  },
   "menu": {
     "items": [
       {
