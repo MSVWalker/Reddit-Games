@@ -30,6 +30,7 @@ interface TextElement {
     fontFamily: string;
     color: string;
     strokeColor: string;
+    wrapWidth: number;
     bgColor: string;
     rotation: number;
     align: 'left' | 'center' | 'right';
@@ -181,12 +182,62 @@ const getTextLines = (content: string) => {
     return lines.length ? lines : [''];
 };
 
+const wrapTextLines = (ctx: CanvasRenderingContext2D, content: string, maxWidth: number) => {
+    const width = Math.max(1, maxWidth);
+    const hardLines = getTextLines(content);
+    const wrapped: string[] = [];
+
+    for (const hardLine of hardLines) {
+        const trimmed = hardLine.trim();
+        if (!trimmed) {
+            wrapped.push('');
+            continue;
+        }
+
+        const words = trimmed.split(/\s+/).filter(Boolean);
+        let line = '';
+
+        for (const word of words) {
+            const next = line ? `${line} ${word}` : word;
+            if (ctx.measureText(next).width <= width) {
+                line = next;
+                continue;
+            }
+
+            if (line) wrapped.push(line);
+
+            if (ctx.measureText(word).width <= width) {
+                line = word;
+                continue;
+            }
+
+            let chunk = '';
+            for (const ch of Array.from(word)) {
+                const test = chunk + ch;
+                if (chunk === '' || ctx.measureText(test).width <= width) {
+                    chunk = test;
+                    continue;
+                }
+                wrapped.push(chunk);
+                chunk = ch;
+            }
+            line = chunk || word;
+        }
+
+        wrapped.push(line);
+    }
+
+    return wrapped.length ? wrapped : [''];
+};
+
 const getTextMetrics = (ctx: CanvasRenderingContext2D, el: TextElement) => {
     const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
     ctx.font = `900 ${el.fontSize}px ${fontStack}`;
-    const lines = getTextLines(el.content);
+    const wrapWidth = Math.max(1, el.wrapWidth);
+    const lines = wrapTextLines(ctx, el.content, wrapWidth);
     const lineHeight = el.fontSize * 1.12;
-    const maxWidth = Math.max(...lines.map((line) => ctx.measureText(line).width), el.fontSize);
+    const measuredMax = Math.max(...lines.map((line) => ctx.measureText(line).width), 0);
+    const maxWidth = Math.min(wrapWidth, Math.max(measuredMax, el.fontSize));
     const height = lineHeight * lines.length;
     return { lines, lineHeight, maxWidth, height, fontStack };
 };
@@ -508,25 +559,26 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
 
     // Handlers
-    const handleAddText = () => {
-        if (!image) return;
-        const newEl: TextElement = {
-            id: `text-${Date.now()}`,
-            type: 'text',
-            content: 'DOUBLE TAP',
-            x: image.width / 2,
-            y: image.height / 2,
-            fontSize: getDefaultFontSize(),
-            color: '#ffffff',
-            strokeColor: '#000000',
-            fontFamily: DEFAULT_FONT_STACK,
-            bgColor: 'transparent',
-            rotation: 0,
-            align: 'center',
-        };
-        setElements([...elements, newEl]);
-        setSelectedId(newEl.id);
-    };
+	    const handleAddText = () => {
+	        if (!image) return;
+	        const newEl: TextElement = {
+	            id: `text-${Date.now()}`,
+	            type: 'text',
+	            content: 'DOUBLE TAP',
+	            x: image.width / 2,
+	            y: image.height / 2,
+	            fontSize: getDefaultFontSize(),
+	            color: '#ffffff',
+	            strokeColor: '#000000',
+	            fontFamily: DEFAULT_FONT_STACK,
+	            wrapWidth: clamp(image.width * 0.9, Math.min(160, image.width * 0.95), image.width * 0.95),
+	            bgColor: 'transparent',
+	            rotation: 0,
+	            align: 'center',
+	        };
+	        setElements([...elements, newEl]);
+	        setSelectedId(newEl.id);
+	    };
 
     const handleAddEmoji = (emoji: string) => {
         if (!image) return;
@@ -541,6 +593,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         };
         setElements([...elements, newEl]);
         setSelectedId(newEl.id);
+        setActiveTool(null); // close picker and show controls
     };
 
     const handleAddImage = (src: string) => {
@@ -869,15 +922,22 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         if (maxX <= minX) return canvasCssWidth / 2;
         return clamp(editingElement.x * scale, minX, maxX);
     })();
-    const editingTextareaTopPx = (() => {
-        if (!editingElement || !image) return 0;
-        const canvasCssHeight = image.height * scale;
-        const margin = 12;
-        const lineCount = getTextLines(editingElement.content).length;
-        const approxHeightPx = Math.max(
-            editingElement.fontSize * scale * 1.5,
-            (lineCount * editingElement.fontSize * 1.12 + 24) * scale
-        );
+	    const editingTextareaTopPx = (() => {
+	        if (!editingElement || !image) return 0;
+	        const canvasCssHeight = image.height * scale;
+	        const margin = 12;
+	        const lineCount = (() => {
+	            const ctx = canvasRef.current?.getContext('2d');
+	            if (!ctx || scale <= 0) return getTextLines(editingElement.content).length;
+	            const fontStack = editingElement.fontFamily || DEFAULT_FONT_STACK;
+	            ctx.font = `900 ${editingElement.fontSize}px ${fontStack}`;
+	            const wrapWidth = Math.max(1, editingTextareaWidthPx / scale);
+	            return wrapTextLines(ctx, editingElement.content, wrapWidth).length;
+	        })();
+	        const approxHeightPx = Math.max(
+	            editingElement.fontSize * scale * 1.5,
+	            (lineCount * editingElement.fontSize * 1.12 + 24) * scale
+	        );
         const minY = approxHeightPx / 2 + margin;
         const maxY = canvasCssHeight - approxHeightPx / 2 - margin;
         if (maxY <= minY) return canvasCssHeight / 2;
@@ -1044,38 +1104,38 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 </div>
                 <div className="space-y-1">
                     <p className="text-[9px] text-white/50 uppercase tracking-wide">Text</p>
-                    <div className="grid grid-cols-7 gap-1">
-                        {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
-                            <button
-                                key={c}
-                                onClick={() => updateStyle('color', c)}
-                                className={clsx(
-                                    "w-6 h-6 rounded-md border-2 transition-transform mx-auto",
-                                    selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
-                                )}
-                                style={{ backgroundColor: c }}
-                            />
-                        ))}
-                    </div>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Border</p>
-                    <div className="grid grid-cols-7 gap-1">
-                        {['#000000', '#ffffff', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
-                            <button
-                                key={c}
-                                onClick={() => updateStyle('strokeColor', c)}
-                                className={clsx(
-                                    "w-6 h-6 rounded-md border-2 transition-transform mx-auto",
-                                    (selectedElement as TextElement).strokeColor === c
-                                        ? "border-white scale-110"
-                                        : "border-transparent hover:scale-105"
-                                )}
-                                style={{ backgroundColor: c }}
-                            />
-                        ))}
-                    </div>
-                </div>
+	                    <div className="grid grid-cols-7 gap-1">
+	                        {['#ffffff', '#000000', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+	                            <button
+	                                key={c}
+	                                onClick={() => updateStyle('color', c)}
+	                                className={clsx(
+	                                    "w-5 h-5 rounded-md border-2 transition-transform mx-auto",
+	                                    selectedElement.color === c ? "border-white scale-110" : "border-transparent hover:scale-105"
+	                                )}
+	                                style={{ backgroundColor: c }}
+	                            />
+	                        ))}
+	                    </div>
+	                </div>
+	                <div className="space-y-1">
+	                    <p className="text-[9px] text-white/50 uppercase tracking-wide">Border</p>
+	                    <div className="grid grid-cols-7 gap-1">
+	                        {['#000000', '#ffffff', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#a855f7'].map((c) => (
+	                            <button
+	                                key={c}
+	                                onClick={() => updateStyle('strokeColor', c)}
+	                                className={clsx(
+	                                    "w-5 h-5 rounded-md border-2 transition-transform mx-auto",
+	                                    (selectedElement as TextElement).strokeColor === c
+	                                        ? "border-white scale-110"
+	                                        : "border-transparent hover:scale-105"
+	                                )}
+	                                style={{ backgroundColor: c }}
+	                            />
+	                        ))}
+	                    </div>
+	                </div>
                 {/* Font Size */}
                 <div className="space-y-1">
                     <p className="text-[9px] text-white/50 uppercase tracking-wide">Font Size</p>
