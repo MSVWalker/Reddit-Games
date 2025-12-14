@@ -27,6 +27,7 @@ interface TextElement {
     x: number;
     y: number;
     fontSize: number;
+    maxFontSize: number;
     fontFamily: string;
     color: string;
     strokeColor: string;
@@ -91,6 +92,7 @@ type ResizeState = {
         x: number;
         y: number;
         fontSize?: number;
+        maxFontSize?: number;
         wrapWidth?: number;
         boxHeight?: number;
         size?: number;
@@ -123,46 +125,38 @@ const STICKERS = [
 ];
 
 const NFL_LOGOS = [
-    // AFC East
-    { name: 'Buffalo Bills', src: '/stickers/nfl/buffalo-bills.png' },
-    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
-    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
-    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
-    // AFC North
+    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
+    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
     { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
+    { name: 'Buffalo Bills', src: '/stickers/nfl/buffalo-bills.png' },
+    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
+    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
     { name: 'Cincinnati Bengals', src: '/stickers/nfl/cincinnati-bengals.png' },
     { name: 'Cleveland Browns', src: '/stickers/nfl/cleveland-browns.png' },
-    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
-    // AFC South
+    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
+    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
+    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
+    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
     { name: 'Houston Texans', src: '/stickers/nfl/houston-texans.png' },
     { name: 'Indianapolis Colts', src: '/stickers/nfl/indianapolis-colts.png' },
     { name: 'Jacksonville Jaguars', src: '/stickers/nfl/jacksonville-jaguars.png' },
-    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
-    // AFC West
-    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
     { name: 'Kansas City Chiefs', src: '/stickers/nfl/kansas-city-chiefs.png' },
     { name: 'Las Vegas Raiders', src: '/stickers/nfl/las-vegas-raiders.png' },
     { name: 'Los Angeles Chargers', src: '/stickers/nfl/los-angeles-chargers.png' },
-    // NFC East
-    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
-    { name: 'New York Giants', src: '/stickers/nfl/new-york-giants.png' },
-    { name: 'Philadelphia Eagles', src: '/stickers/nfl/philadelphia-eagles.png' },
-    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
-    // NFC North
-    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
-    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
-    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
-    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
-    // NFC South
-    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
-    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
-    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
-    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
-    // NFC West
-    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
     { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
+    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
+    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
+    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
+    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    { name: 'New York Giants', src: '/stickers/nfl/new-york-giants.png' },
+    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
+    { name: 'Philadelphia Eagles', src: '/stickers/nfl/philadelphia-eagles.png' },
+    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
     { name: 'San Francisco 49ers', src: '/stickers/nfl/san-francisco-49ers.png' },
     { name: 'Seattle Seahawks', src: '/stickers/nfl/seattle-seahawks.png' },
+    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
+    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
+    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
 ];
 
 const HANDLE_SIGNS: Record<ResizeHandle, { sx: -1 | 1; sy: -1 | 1 }> = {
@@ -189,6 +183,28 @@ const dist2 = (a: Point, b: Point) => {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const getRotatedAabbSize = (width: number, height: number, rotationDeg: number) => {
+    const r = degToRad(rotationDeg);
+    const cos = Math.cos(r);
+    const sin = Math.sin(r);
+    return {
+        width: Math.abs(width * cos) + Math.abs(height * sin),
+        height: Math.abs(width * sin) + Math.abs(height * cos),
+    };
+};
+
+const clampCenterToImage = (center: Point, box: ElementBox, imageWidth: number, imageHeight: number) => {
+    const aabb = getRotatedAabbSize(box.width, box.height, box.rotation);
+    const minX = aabb.width / 2;
+    const maxX = imageWidth - aabb.width / 2;
+    const minY = aabb.height / 2;
+    const maxY = imageHeight - aabb.height / 2;
+    return {
+        x: maxX >= minX ? clamp(center.x, minX, maxX) : imageWidth / 2,
+        y: maxY >= minY ? clamp(center.y, minY, maxY) : imageHeight / 2,
+    };
+};
 
 const getTextLines = (content: string) => {
     const lines = content.split('\n');
@@ -259,6 +275,49 @@ const getTextMetrics = (ctx: CanvasRenderingContext2D, el: TextElement) => {
     return { lines, lineHeight, maxWidth, height, fontStack };
 };
 
+const getMaxFittableTextFontSize = (
+    ctx: CanvasRenderingContext2D,
+    el: TextElement,
+    imageWidth: number,
+    imageHeight: number
+) => {
+    const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
+    const desiredWrapWidth =
+        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
+            ? el.wrapWidth
+            : Math.max(120, el.fontSize * 6);
+    const wrapWidth = Math.max(1, desiredWrapWidth);
+    const baseBoxHeight =
+        typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? Math.max(1, el.boxHeight) : 1;
+    const minFontSize = 2;
+    const maxCandidate = Math.max(minFontSize, Math.floor(Math.min(240, imageWidth, imageHeight)));
+
+    const fits = (fontSize: number) => {
+        ctx.font = `900 ${fontSize}px ${fontStack}`;
+        const lines = wrapTextLines(ctx, el.content, wrapWidth);
+        const lineHeight = fontSize * 1.12;
+        const contentHeight = lineHeight * lines.length;
+        const rectWidth = wrapWidth + TEXT_BOX_PADDING * 2;
+        const rectHeight = Math.max(contentHeight, baseBoxHeight) + TEXT_BOX_PADDING * 2;
+        const aabb = getRotatedAabbSize(rectWidth, rectHeight, el.rotation);
+        return aabb.width <= imageWidth && aabb.height <= imageHeight;
+    };
+
+    let lo = minFontSize;
+    let hi = maxCandidate;
+    let best = minFontSize;
+    while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (fits(mid)) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return best;
+};
+
 const getElementBox = (ctx: CanvasRenderingContext2D, el: CanvasElement): ElementBox => {
     if (el.type === 'image') {
         return { cx: el.x, cy: el.y, width: el.width, height: el.height, rotation: el.rotation };
@@ -281,6 +340,53 @@ const getElementBox = (ctx: CanvasRenderingContext2D, el: CanvasElement): Elemen
         height: boxHeight + TEXT_BOX_PADDING * 2,
         rotation: el.rotation,
     };
+};
+
+const constrainElementToImage = (
+    ctx: CanvasRenderingContext2D | null,
+    el: CanvasElement,
+    imageWidth: number,
+    imageHeight: number
+): CanvasElement => {
+    if (el.type === 'text') {
+        const minWrapWidth = 60;
+        const minBoxHeight = 20;
+        const maxWrapWidth = Math.max(minWrapWidth, imageWidth - TEXT_BOX_PADDING * 2 - 16);
+        const maxBoxHeight = Math.max(minBoxHeight, imageHeight - TEXT_BOX_PADDING * 2 - 16);
+        const maxFontSize =
+            typeof el.maxFontSize === 'number' && Number.isFinite(el.maxFontSize) ? el.maxFontSize : el.fontSize;
+        let fontSize = Math.min(el.fontSize, maxFontSize);
+        const wrapWidth = clamp(el.wrapWidth, minWrapWidth, maxWrapWidth);
+        const boxHeight = clamp(el.boxHeight, minBoxHeight, maxBoxHeight);
+        if (ctx) {
+            const fitCap = getMaxFittableTextFontSize(
+                ctx,
+                { ...el, fontSize, wrapWidth, boxHeight },
+                imageWidth,
+                imageHeight
+            );
+            fontSize = Math.min(fontSize, fitCap);
+        }
+        const nextText: TextElement = { ...el, fontSize, maxFontSize, wrapWidth, boxHeight };
+        const box = ctx
+            ? getElementBox(ctx, nextText)
+            : {
+                  cx: nextText.x,
+                  cy: nextText.y,
+                  width: Math.max(1, wrapWidth) + TEXT_BOX_PADDING * 2,
+                  height: Math.max(1, boxHeight) + TEXT_BOX_PADDING * 2,
+                  rotation: nextText.rotation,
+              };
+        const clamped = clampCenterToImage({ x: nextText.x, y: nextText.y }, box, imageWidth, imageHeight);
+        return { ...nextText, x: clamped.x, y: clamped.y };
+    }
+
+    const box: ElementBox =
+        el.type === 'image'
+            ? { cx: el.x, cy: el.y, width: el.width, height: el.height, rotation: el.rotation }
+            : { cx: el.x, cy: el.y, width: el.size, height: el.size, rotation: el.rotation };
+    const clamped = clampCenterToImage({ x: el.x, y: el.y }, box, imageWidth, imageHeight);
+    return { ...el, x: clamped.x, y: clamped.y };
 };
 
 const pointInBox = (point: Point, box: ElementBox) => {
@@ -371,8 +477,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     };
 
     const getMaxFontSize = () => {
-        if (!image) return 200;
-        return Math.max(48, Math.round(image.width * 0.3));
+        if (!image) return 160;
+        const scaled = image.width * 0.18;
+        return Math.round(Math.min(160, Math.max(32, scaled)));
     };
 
     // Load Image
@@ -593,6 +700,8 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	    const handleAddText = () => {
 	        if (!image) return;
 	        const fontSize = getDefaultFontSize();
+	        const maxWrapWidth = Math.max(80, image.width - TEXT_BOX_PADDING * 2 - 16);
+	        const maxBoxHeight = Math.max(60, image.height - TEXT_BOX_PADDING * 2 - 16);
 	        const newEl: TextElement = {
 	            id: `text-${Date.now()}`,
 	            type: 'text',
@@ -600,11 +709,12 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	            x: image.width / 2,
 	            y: image.height / 2,
 	            fontSize,
+	            maxFontSize: fontSize,
 	            color: '#ffffff',
 	            strokeColor: '#000000',
 	            fontFamily: DEFAULT_FONT_STACK,
-	            wrapWidth: clamp(image.width * 0.4, 80, image.width * 0.95),
-	            boxHeight: Math.max(Math.round(fontSize * 1.6), 60),
+	            wrapWidth: clamp(image.width * 0.4, 80, maxWrapWidth),
+	            boxHeight: clamp(Math.max(Math.round(fontSize * 1.6), 60), 60, maxBoxHeight),
 	            bgColor: 'transparent',
 	            rotation: 0,
 	            align: 'center',
@@ -737,7 +847,14 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	                        startBox: { width: box.width, height: box.height },
 	                        start:
 	                            selectedEl.type === 'text'
-	                                ? { x: selectedEl.x, y: selectedEl.y, wrapWidth: box.width - TEXT_BOX_PADDING * 2, boxHeight: box.height - TEXT_BOX_PADDING * 2 }
+	                                ? {
+	                                      x: selectedEl.x,
+	                                      y: selectedEl.y,
+	                                      fontSize: selectedEl.fontSize,
+	                                      maxFontSize: selectedEl.maxFontSize ?? selectedEl.fontSize,
+	                                      wrapWidth: box.width - TEXT_BOX_PADDING * 2,
+	                                      boxHeight: box.height - TEXT_BOX_PADDING * 2,
+	                                  }
 	                                : selectedEl.type === 'emoji'
 	                                    ? { x: selectedEl.x, y: selectedEl.y, size: selectedEl.size }
 	                                    : { x: selectedEl.x, y: selectedEl.y, width: selectedEl.width, height: selectedEl.height },
@@ -778,6 +895,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             const { sx, sy } = HANDLE_SIGNS[resize.handle];
             const r = degToRad(resize.rotation);
             const diffLocal = rotatePoint({ x: x - resize.fixedCorner.x, y: y - resize.fixedCorner.y }, -r);
+            const ctx = canvasRef.current?.getContext('2d') ?? null;
 
             const safeStartWidth = Math.max(1, resize.startBox.width);
             const safeStartHeight = Math.max(1, resize.startBox.height);
@@ -795,9 +913,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     if (el.id !== resize.elementId) return el;
                     if (el.type === 'text' && image) {
                         const minWrapWidth = 60;
-                        const maxWrapWidth = image.width * 0.95;
-                        const minBoxHeight = Math.max(40, el.fontSize * 1.2);
-                        const maxBoxHeight = image.height * 0.95;
+                        const minBoxHeight = 20;
+                        const maxWrapWidth = Math.max(minWrapWidth, image.width - TEXT_BOX_PADDING * 2 - 16);
+                        const maxBoxHeight = Math.max(minBoxHeight, image.height - TEXT_BOX_PADDING * 2 - 16);
 
                         const boxWidth = clamp(
                             Math.abs(diffLocal.x),
@@ -811,25 +929,46 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         );
 
                         const nextCenter = { x: (resize.fixedCorner.x + x) / 2, y: (resize.fixedCorner.y + y) / 2 };
-                        return {
+                        const nextWrapWidth = clamp(boxWidth - TEXT_BOX_PADDING * 2, minWrapWidth, maxWrapWidth);
+                        const nextBoxHeight = clamp(boxHeight - TEXT_BOX_PADDING * 2, minBoxHeight, maxBoxHeight);
+
+                        const startWrapWidth = Math.max(1, resize.start.wrapWidth ?? nextWrapWidth);
+                        const startBoxHeight = Math.max(1, resize.start.boxHeight ?? nextBoxHeight);
+                        const startFontSize = resize.start.fontSize ?? el.fontSize;
+                        const maxFontSize =
+                            typeof el.maxFontSize === 'number' && Number.isFinite(el.maxFontSize)
+                                ? el.maxFontSize
+                                : (resize.start.maxFontSize ?? startFontSize);
+                        const scaleForFont = Math.min(nextWrapWidth / startWrapWidth, nextBoxHeight / startBoxHeight);
+                        const nextFontSize = clamp(startFontSize * scaleForFont, 2, maxFontSize);
+                        const updated: TextElement = {
                             ...el,
                             x: nextCenter.x,
                             y: nextCenter.y,
-                            wrapWidth: clamp(boxWidth - TEXT_BOX_PADDING * 2, minWrapWidth, maxWrapWidth),
-                            boxHeight: clamp(boxHeight - TEXT_BOX_PADDING * 2, minBoxHeight, maxBoxHeight),
+                            fontSize: nextFontSize,
+                            wrapWidth: nextWrapWidth,
+                            boxHeight: nextBoxHeight,
                         };
+                        return constrainElementToImage(ctx, updated, image.width, image.height) as TextElement;
                     }
                     if (el.type === 'emoji' && resize.start.size) {
-                        return { ...el, x: uniformNextCenter.x, y: uniformNextCenter.y, size: Math.max(20, resize.start.size * uniformScale) };
+                        const updated: EmojiElement = {
+                            ...el,
+                            x: uniformNextCenter.x,
+                            y: uniformNextCenter.y,
+                            size: Math.max(20, resize.start.size * uniformScale),
+                        };
+                        return image ? (constrainElementToImage(ctx, updated, image.width, image.height) as EmojiElement) : updated;
                     }
                     if (el.type === 'image' && resize.start.width && resize.start.height) {
-                        return {
+                        const updated: ImageElement = {
                             ...el,
                             x: uniformNextCenter.x,
                             y: uniformNextCenter.y,
                             width: Math.max(20, resize.start.width * uniformScale),
                             height: Math.max(20, resize.start.height * uniformScale),
                         };
+                        return image ? (constrainElementToImage(ctx, updated, image.width, image.height) as ImageElement) : updated;
                     }
                     return el;
                 })
@@ -840,12 +979,14 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         // Element dragging
         if (!isDragging || !selectedId) return;
 
-        setElements(prev => prev.map(el => {
-            if (el.id === selectedId) {
-                return { ...el, x: x - dragOffset.x, y: y - dragOffset.y };
-            }
-            return el;
-        }));
+        const ctx = canvasRef.current?.getContext('2d') ?? null;
+        setElements((prev) =>
+            prev.map((el) => {
+                if (el.id !== selectedId) return el;
+                const next = { ...el, x: x - dragOffset.x, y: y - dragOffset.y } as CanvasElement;
+                return image ? constrainElementToImage(ctx, next, image.width, image.height) : next;
+            })
+        );
     };
 
     const handleCanvasEnd = () => {
@@ -905,17 +1046,43 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     };
 
     const updateTextContent = (id: string, content: string) => {
-        setElements(prev => prev.map(el =>
-            el.id === id ? { ...el, content } : el
-        ));
+        const ctx = canvasRef.current?.getContext('2d') ?? null;
+        setElements((prev) =>
+            prev.map((el) => {
+                if (el.id !== id || el.type !== 'text') return el;
+                const next: TextElement = { ...el, content };
+                return image ? (constrainElementToImage(ctx, next, image.width, image.height) as TextElement) : next;
+            })
+        );
     };
 
     // Style helpers
     const updateStyle = (key: keyof TextElement | keyof EmojiElement | keyof ImageElement, value: any) => {
         if (!selectedId) return;
-        setElements(prev => prev.map(el =>
-            el.id === selectedId ? { ...el, [key]: value } : el
-        ));
+        const ctx = canvasRef.current?.getContext('2d') ?? null;
+        setElements((prev) =>
+            prev.map((el) => {
+                if (el.id !== selectedId) return el;
+                const next = { ...el, [key]: value } as CanvasElement;
+                return image ? constrainElementToImage(ctx, next, image.width, image.height) : next;
+            })
+        );
+    };
+
+    const updateTextMaxFontSize = (id: string, value: number) => {
+        const ctx = canvasRef.current?.getContext('2d') ?? null;
+        const nextMaxFontSize = Math.max(2, Math.round(value));
+        setElements((prev) =>
+            prev.map((el) => {
+                if (el.id !== id || el.type !== 'text') return el;
+                const next: TextElement = {
+                    ...el,
+                    maxFontSize: nextMaxFontSize,
+                    fontSize: nextMaxFontSize,
+                };
+                return image ? (constrainElementToImage(ctx, next, image.width, image.height) as TextElement) : next;
+            })
+        );
     };
 
     // Drawing helpers
@@ -1029,16 +1196,32 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	        panelContent = (
 	            <div className="p-2">
 	                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add image</p>
-	                <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-60 overflow-y-auto pr-1">
-	                    {[...STICKERS, ...NFL_LOGOS].map((item) => (
-	                        <button
-	                            key={item.src}
-	                            onClick={() => handleAddImage(item.src)}
-	                            className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
-	                        >
-	                            <img src={item.src} alt={item.name} className="w-full h-full object-contain" />
-	                        </button>
-	                    ))}
+	                <div className="max-h-60 overflow-y-auto pr-1 space-y-2">
+	                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+	                        {STICKERS.map((item) => (
+	                            <button
+	                                key={item.src}
+	                                onClick={() => handleAddImage(item.src)}
+	                                className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
+	                            >
+	                                <img src={item.src} alt={item.name} className="w-full h-full object-contain" />
+	                            </button>
+	                        ))}
+	                    </div>
+	                    <div className="space-y-1">
+	                        <p className="text-[10px] text-white/50 uppercase tracking-wide px-1">NFL</p>
+	                        <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
+	                            {NFL_LOGOS.map((item) => (
+	                                <button
+	                                    key={item.src}
+	                                    onClick={() => handleAddImage(item.src)}
+	                                    className="aspect-square bg-white/5 hover:bg-white/10 rounded-lg p-2 flex items-center justify-center transition-colors active:scale-95"
+	                                >
+	                                    <img src={item.src} alt={item.name} className="w-full h-full object-contain" />
+	                                </button>
+	                            ))}
+	                        </div>
+	                    </div>
 	                </div>
 	            </div>
 	        );
@@ -1122,7 +1305,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         );
     } else if (selectedElement && selectedElement.type === 'text') {
         panelContent = (
-                <div className="p-2 space-y-1.5">
+                <div className="p-2 pb-3 space-y-1">
                 <div className="flex items-center justify-between">
                     <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Layer</p>
                     <div className="flex items-center gap-1">
@@ -1179,10 +1362,15 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Size</p>
                     <input
                         type="range"
-                        min="12"
+                        min="8"
                         max={getMaxFontSize()}
-                        value={(selectedElement as TextElement).fontSize}
-                        onChange={(e) => updateStyle('fontSize', clamp(Number(e.target.value), 12, getMaxFontSize()))}
+                        value={(selectedElement as TextElement).maxFontSize ?? (selectedElement as TextElement).fontSize}
+                        onChange={(e) =>
+                            updateTextMaxFontSize(
+                                selectedElement.id,
+                                clamp(Number(e.target.value), 8, getMaxFontSize())
+                            )
+                        }
                         className="w-full accent-purple-500 h-1"
                     />
                 </div>
