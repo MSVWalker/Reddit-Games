@@ -1584,12 +1584,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         )}
                     </div>
 
-                {/* Hint overlay if empty */}
-                {elements.length === 0 && drawingStrokes.length === 0 && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <p className="text-zinc-700 font-bold text-2xl opacity-20 uppercase">Tap to Add</p>
-                    </div>
-                )}
             </div>
 
             {/* Top Bar - Back & Save */}
