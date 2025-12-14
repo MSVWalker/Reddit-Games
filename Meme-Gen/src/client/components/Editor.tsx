@@ -125,38 +125,47 @@ const STICKERS = [
 ];
 
 const NFL_LOGOS = [
-    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
-    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
-    { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
+    // AFC East
     { name: 'Buffalo Bills', src: '/stickers/nfl/buffalo-bills.png' },
-    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
-    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
+    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
+    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
+    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
+    // AFC North
+    { name: 'Baltimore Ravens', src: '/stickers/nfl/baltimore-ravens.png' },
     { name: 'Cincinnati Bengals', src: '/stickers/nfl/cincinnati-bengals.png' },
     { name: 'Cleveland Browns', src: '/stickers/nfl/cleveland-browns.png' },
-    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
-    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
-    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
-    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
+    // AFC South
     { name: 'Houston Texans', src: '/stickers/nfl/houston-texans.png' },
     { name: 'Indianapolis Colts', src: '/stickers/nfl/indianapolis-colts.png' },
     { name: 'Jacksonville Jaguars', src: '/stickers/nfl/jacksonville-jaguars.png' },
+    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
+    // AFC West
+    { name: 'Denver Broncos', src: '/stickers/nfl/denver-broncos.png' },
     { name: 'Kansas City Chiefs', src: '/stickers/nfl/kansas-city-chiefs.png' },
     { name: 'Las Vegas Raiders', src: '/stickers/nfl/las-vegas-raiders.png' },
     { name: 'Los Angeles Chargers', src: '/stickers/nfl/los-angeles-chargers.png' },
-    { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
-    { name: 'Miami Dolphins', src: '/stickers/nfl/miami-dolphins.png' },
-    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
-    { name: 'New England Patriots', src: '/stickers/nfl/new-england-patriots.png' },
-    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    // NFC East
+    { name: 'Dallas Cowboys', src: '/stickers/nfl/dallas-cowboys.png' },
     { name: 'New York Giants', src: '/stickers/nfl/new-york-giants.png' },
-    { name: 'New York Jets', src: '/stickers/nfl/new-york-jets.png' },
     { name: 'Philadelphia Eagles', src: '/stickers/nfl/philadelphia-eagles.png' },
-    { name: 'Pittsburgh Steelers', src: '/stickers/nfl/pittsburgh-steelers.png' },
+    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
+    // NFC North
+    { name: 'Chicago Bears', src: '/stickers/nfl/chicago-bears.png' },
+    { name: 'Detroit Lions', src: '/stickers/nfl/detroit-lions.png' },
+    { name: 'Green Bay Packers', src: '/stickers/nfl/green-bay-packers.png' },
+    { name: 'Minnesota Vikings', src: '/stickers/nfl/minnesota-vikings.png' },
+    // NFC South
+    { name: 'Atlanta Falcons', src: '/stickers/nfl/atlanta-falcons.png' },
+    { name: 'Carolina Panthers', src: '/stickers/nfl/carolina-panthers.png' },
+    { name: 'New Orleans Saints', src: '/stickers/nfl/new-orleans-saints.png' },
+    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
+    { name: 'Tampa Bay Buccaneers (Throwback)', src: '/stickers/nfl/tampa-bay-buccaneers-throwback.png' },
+    // NFC West
+    { name: 'Arizona Cardinals', src: '/stickers/nfl/arizona-cardinals.png' },
+    { name: 'Los Angeles Rams', src: '/stickers/nfl/los-angeles-rams.png' },
     { name: 'San Francisco 49ers', src: '/stickers/nfl/san-francisco-49ers.png' },
     { name: 'Seattle Seahawks', src: '/stickers/nfl/seattle-seahawks.png' },
-    { name: 'Tampa Bay Buccaneers', src: '/stickers/nfl/tampa-bay-buccaneers.png' },
-    { name: 'Tennessee Titans', src: '/stickers/nfl/tennessee-titans.png' },
-    { name: 'Washington Commanders', src: '/stickers/nfl/washington-commanders.png' },
 ];
 
 const HANDLE_SIGNS: Record<ResizeHandle, { sx: -1 | 1; sy: -1 | 1 }> = {
@@ -410,7 +419,6 @@ const getHandlePoints = (box: ElementBox): { handle: ResizeHandle; point: Point 
 export function Editor({ templateSrc, onBack }: EditorProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const uploadInputRef = useRef<HTMLInputElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
     const drawingLayerRef = useRef<HTMLCanvasElement | null>(null);
     const resizeRef = useRef<ResizeState | null>(null);
@@ -705,7 +713,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	        const newEl: TextElement = {
 	            id: `text-${Date.now()}`,
 	            type: 'text',
-	            content: 'DOUBLE TAP',
+	            content: '',
 	            x: image.width / 2,
 	            y: image.height / 2,
 	            fontSize,
@@ -721,6 +729,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	        };
 	        setElements([...elements, newEl]);
 	        setSelectedId(newEl.id);
+	        setEditingTextId(newEl.id);
 	    };
 
     const handleAddEmoji = (emoji: string) => {
@@ -779,16 +788,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             setSelectedId(newEl.id);
             setActiveTool(null); // Close panel
         };
-    };
-
-    const handleUploadImage = (file: File) => {
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            const src = reader.result as string;
-            handleAddImage(src);
-        };
-        reader.readAsDataURL(file);
     };
 
     const getCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
@@ -939,8 +938,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             typeof el.maxFontSize === 'number' && Number.isFinite(el.maxFontSize)
                                 ? el.maxFontSize
                                 : (resize.start.maxFontSize ?? startFontSize);
-                        const scaleForFont = Math.min(nextWrapWidth / startWrapWidth, nextBoxHeight / startBoxHeight);
-                        const nextFontSize = clamp(startFontSize * scaleForFont, 2, maxFontSize);
+                        const widthScale = Math.max(0.25, nextWrapWidth / startWrapWidth);
+                        const heightScale = Math.max(0.25, nextBoxHeight / startBoxHeight);
+                        const weightedScale = Math.exp(0.25 * Math.log(widthScale) + 0.75 * Math.log(heightScale));
+                        const nextFontSize = clamp(startFontSize * weightedScale, 2, maxFontSize);
                         const updated: TextElement = {
                             ...el,
                             x: nextCenter.x,
@@ -1627,15 +1628,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         <span className="text-[9px]">Image</span>
                     </button>
 
-                    {/* Upload custom image */}
-                    <button
-                        onClick={() => uploadInputRef.current?.click()}
-                        className="w-14 h-14 flex flex-col items-center justify-center rounded-xl transition-all text-xs gap-1 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                    >
-                        <ImageIcon className="w-5 h-5" />
-                        <span className="text-[9px]">Upload</span>
-                    </button>
-
                     {/* Draw Tool */}
                     <button
                         onClick={() => toggleTool('draw')}
@@ -1684,23 +1676,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     </div>
                 </div>
             )}
-
-            {/* Hidden upload input */}
-            <input
-                ref={uploadInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                        handleUploadImage(file);
-                    }
-                    if (uploadInputRef.current) {
-                        uploadInputRef.current.value = '';
-                    }
-                }}
-            />
 
             {/* Save Modal */}
             {showSaveModal && saveUrl && (
