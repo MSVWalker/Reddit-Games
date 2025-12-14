@@ -89,6 +89,9 @@ const MEME_FILES = [
     'x-all-the-y.jpg',
     'y-u-no.jpg',
     'yall-got-any-more-of-that.jpg',
+    'look-at-me.jpg',
+    'wad37qky80o61.jpg',
+    'reddit-formats-collection.jpg',
 ];
 
 const formatName = (file: string) =>
