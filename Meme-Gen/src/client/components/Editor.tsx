@@ -203,12 +203,20 @@ const getRotatedAabbSize = (width: number, height: number, rotationDeg: number) 
     };
 };
 
-const clampCenterToImage = (center: Point, box: ElementBox, imageWidth: number, imageHeight: number) => {
+const clampCenterToImage = (
+    center: Point,
+    box: ElementBox,
+    imageWidth: number,
+    imageHeight: number,
+    overflowRatio: number
+) => {
     const aabb = getRotatedAabbSize(box.width, box.height, box.rotation);
-    const minX = aabb.width / 2;
-    const maxX = imageWidth - aabb.width / 2;
-    const minY = aabb.height / 2;
-    const maxY = imageHeight - aabb.height / 2;
+    const overflowX = Math.max(0, imageWidth * overflowRatio);
+    const overflowY = Math.max(0, imageHeight * overflowRatio);
+    const minX = aabb.width / 2 - overflowX;
+    const maxX = imageWidth - aabb.width / 2 + overflowX;
+    const minY = aabb.height / 2 - overflowY;
+    const maxY = imageHeight - aabb.height / 2 + overflowY;
     return {
         x: maxX >= minX ? clamp(center.x, minX, maxX) : imageWidth / 2,
         y: maxY >= minY ? clamp(center.y, minY, maxY) : imageHeight / 2,
@@ -355,7 +363,8 @@ const constrainElementToImage = (
     ctx: CanvasRenderingContext2D | null,
     el: CanvasElement,
     imageWidth: number,
-    imageHeight: number
+    imageHeight: number,
+    overflowRatio: number
 ): CanvasElement => {
     if (el.type === 'text') {
         const minWrapWidth = 60;
@@ -386,7 +395,13 @@ const constrainElementToImage = (
                   height: Math.max(1, boxHeight) + TEXT_BOX_PADDING * 2,
                   rotation: nextText.rotation,
               };
-        const clamped = clampCenterToImage({ x: nextText.x, y: nextText.y }, box, imageWidth, imageHeight);
+        const clamped = clampCenterToImage(
+            { x: nextText.x, y: nextText.y },
+            box,
+            imageWidth,
+            imageHeight,
+            overflowRatio
+        );
         return { ...nextText, x: clamped.x, y: clamped.y };
     }
 
@@ -394,7 +409,7 @@ const constrainElementToImage = (
         el.type === 'image'
             ? { cx: el.x, cy: el.y, width: el.width, height: el.height, rotation: el.rotation }
             : { cx: el.x, cy: el.y, width: el.size, height: el.size, rotation: el.rotation };
-    const clamped = clampCenterToImage({ x: el.x, y: el.y }, box, imageWidth, imageHeight);
+    const clamped = clampCenterToImage({ x: el.x, y: el.y }, box, imageWidth, imageHeight, overflowRatio);
     return { ...el, x: clamped.x, y: clamped.y };
 };
 
@@ -950,7 +965,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             wrapWidth: nextWrapWidth,
                             boxHeight: nextBoxHeight,
                         };
-                        return constrainElementToImage(ctx, updated, image.width, image.height) as TextElement;
+                        return constrainElementToImage(ctx, updated, image.width, image.height, overflowRatio) as TextElement;
                     }
                     if (el.type === 'emoji' && resize.start.size) {
                         const updated: EmojiElement = {
@@ -959,7 +974,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             y: uniformNextCenter.y,
                             size: Math.max(20, resize.start.size * uniformScale),
                         };
-                        return image ? (constrainElementToImage(ctx, updated, image.width, image.height) as EmojiElement) : updated;
+                        return image
+                            ? (constrainElementToImage(ctx, updated, image.width, image.height, overflowRatio) as EmojiElement)
+                            : updated;
                     }
                     if (el.type === 'image' && resize.start.width && resize.start.height) {
                         const updated: ImageElement = {
@@ -969,7 +986,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             width: Math.max(20, resize.start.width * uniformScale),
                             height: Math.max(20, resize.start.height * uniformScale),
                         };
-                        return image ? (constrainElementToImage(ctx, updated, image.width, image.height) as ImageElement) : updated;
+                        return image
+                            ? (constrainElementToImage(ctx, updated, image.width, image.height, overflowRatio) as ImageElement)
+                            : updated;
                     }
                     return el;
                 })
@@ -985,7 +1004,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             prev.map((el) => {
                 if (el.id !== selectedId) return el;
                 const next = { ...el, x: x - dragOffset.x, y: y - dragOffset.y } as CanvasElement;
-                return image ? constrainElementToImage(ctx, next, image.width, image.height) : next;
+                return image ? constrainElementToImage(ctx, next, image.width, image.height, overflowRatio) : next;
             })
         );
     };
@@ -1046,13 +1065,17 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
     };
 
+    const overflowRatio = isNarrow ? 0.2 : 0;
+
     const updateTextContent = (id: string, content: string) => {
         const ctx = canvasRef.current?.getContext('2d') ?? null;
         setElements((prev) =>
             prev.map((el) => {
                 if (el.id !== id || el.type !== 'text') return el;
                 const next: TextElement = { ...el, content };
-                return image ? (constrainElementToImage(ctx, next, image.width, image.height) as TextElement) : next;
+                return image
+                    ? (constrainElementToImage(ctx, next, image.width, image.height, overflowRatio) as TextElement)
+                    : next;
             })
         );
     };
@@ -1065,7 +1088,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             prev.map((el) => {
                 if (el.id !== selectedId) return el;
                 const next = { ...el, [key]: value } as CanvasElement;
-                return image ? constrainElementToImage(ctx, next, image.width, image.height) : next;
+                return image ? constrainElementToImage(ctx, next, image.width, image.height, overflowRatio) : next;
             })
         );
     };
@@ -1081,7 +1104,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     maxFontSize: nextMaxFontSize,
                     fontSize: nextMaxFontSize,
                 };
-                return image ? (constrainElementToImage(ctx, next, image.width, image.height) as TextElement) : next;
+                return image
+                    ? (constrainElementToImage(ctx, next, image.width, image.height, overflowRatio) as TextElement)
+                    : next;
             })
         );
     };
@@ -1401,16 +1426,16 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     </div>
                 </div>
                 {/* Rotation */}
-		                <div className="space-y-0.5">
-		                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Rotate</p>
-		                    <input
-		                        type="range"
-		                        min="0" max="360"
-		                        value={(selectedElement as TextElement).rotation}
-	                        onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
-	                        className="w-full accent-purple-500 h-1"
-	                    />
-	                </div>
+                <div className="space-y-0.5">
+                    <p className="text-[8px] text-white/50 uppercase tracking-wide leading-none">Rotate</p>
+                    <input
+                        type="range"
+                        min="-180" max="180"
+                        value={(selectedElement as TextElement).rotation}
+                    onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
+                    className="w-full accent-purple-500 h-1"
+                />
+            </div>
             </div>
         );
     } else if (selectedElement && selectedElement.type === 'emoji') {
