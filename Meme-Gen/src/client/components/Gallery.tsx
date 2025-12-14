@@ -40,6 +40,7 @@ const MEME_FILES = [
     'laughing-leo.webp',
     'left-exit-off-ramp2.jpg',
     'leonardo-dicaprio-cheers.jpg',
+    'knife-salesman.jpg',
     'megamind-peeking.png',
     'mocking-spongebob-new.jpg',
     'monkey-puppet.jpg',
