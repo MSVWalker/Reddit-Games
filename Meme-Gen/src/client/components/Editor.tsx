@@ -1204,10 +1204,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             <div className="p-2">
                 <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Pick an emoji</p>
                 <div
-                    className="max-h-64 overflow-y-auto pb-1"
+                    className="max-h-64 overflow-y-auto overflow-x-hidden pb-1"
                     style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
                 >
-                    <div className="grid grid-cols-9 gap-1 pr-1">
+                    <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-9 lg:grid-cols-10 gap-1">
                         {POPULAR_EMOJIS.map(emoji => (
                             <button
                                 key={emoji}
