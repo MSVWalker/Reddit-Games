@@ -459,6 +459,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [shareImageData, setShareImageData] = useState<string | null>(null);
+    const [shareImageBytes, setShareImageBytes] = useState<number | null>(null);
     const [activeTool, setActiveTool] = useState<ActiveTool>(null); // Which tool panel is expanded
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [panelHeight, setPanelHeight] = useState(0);
@@ -489,6 +490,13 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             u8arr[n] = bstr.charCodeAt(n);
         }
         return new Blob([u8arr], { type: mime });
+    };
+
+    const estimateDataUrlBytes = (dataUrl: string) => {
+        const base64 = dataUrl.split(',')[1];
+        if (!base64) return 0;
+        const padding = (base64.match(/=+$/) ?? [''])[0].length;
+        return Math.floor((base64.length * 3) / 4) - padding;
     };
     const copyImage = async (url: string) => {
         try {
@@ -1099,6 +1107,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             const pngUrl = canvas.toDataURL('image/png');
             setPreviewUrl(jpegUrl);
             setShareImageData(pngUrl);
+            setShareImageBytes(estimateDataUrlBytes(pngUrl));
             setPostError(null);
             setPostSuccessUrl(null);
             setShareStatus(null);
@@ -1201,6 +1210,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
     const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim());
     const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
+    const shareSizeMB = shareImageBytes ? shareImageBytes / (1024 * 1024) : null;
+    const nearingLimit = shareSizeMB !== null && shareSizeMB >= 18;
+    const overLimit = shareSizeMB !== null && shareSizeMB > 20;
     const postingHint = !sessionInfo?.loggedIn
         ? 'Log in with Reddit to post directly.'
         : !postTitle.trim()
@@ -1901,6 +1913,21 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 </div>
                             </div>
                         </div>
+
+                        {shareSizeMB !== null && (
+                            <p
+                                className={clsx(
+                                    "text-xs mb-3",
+                                    overLimit
+                                        ? "text-red-400"
+                                        : nearingLimit
+                                            ? "text-amber-300"
+                                            : "text-white/60"
+                                )}
+                            >
+                                Estimated upload size: {shareSizeMB.toFixed(2)} MB (limit 20 MB)
+                            </p>
+                        )}
 
                         <div className="space-y-3 text-left mb-4">
                             <button
