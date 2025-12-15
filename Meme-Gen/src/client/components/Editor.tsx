@@ -1248,8 +1248,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
     const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
     const overLimit = shareImageBytes !== null && shareImageBytes > BASE64_UPLOAD_LIMIT_BYTES;
-    const shareSizeMB = shareImageBytes !== null ? shareImageBytes / (1024 * 1024) : null;
-    const nearingLimit = shareSizeMB !== null && shareSizeMB >= 2.2 && !overLimit;
     const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim() && !overLimit);
     const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
     const postingHint = !sessionInfo?.loggedIn
@@ -1954,23 +1952,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 </div>
                             </div>
                         </div>
-
-                        {shareSizeMB !== null && (
-                            <p
-                                className={clsx(
-                                    "text-xs mb-3",
-                                    overLimit
-                                        ? "text-red-400"
-                                        : nearingLimit
-                                            ? "text-amber-300"
-                                            : "text-white/60"
-                                )}
-                            >
-                                Estimated upload size: {shareSizeMB.toFixed(2)} MB (limit {(
-                                    BASE64_UPLOAD_LIMIT_BYTES / (1024 * 1024)
-                                ).toFixed(1)} MB)
-                            </p>
-                        )}
 
                         <div className="space-y-3 text-left mb-4">
                             <button
