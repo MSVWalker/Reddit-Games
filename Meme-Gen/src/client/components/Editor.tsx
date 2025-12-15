@@ -440,6 +440,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
     const drawingLayerRef = useRef<HTMLCanvasElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
     const resizeRef = useRef<ResizeState | null>(null);
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -457,6 +458,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [saveUrl, setSaveUrl] = useState<string | null>(null);
     const [activeTool, setActiveTool] = useState<ActiveTool>(null); // Which tool panel is expanded
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
+    const [panelHeight, setPanelHeight] = useState(0);
 
     // Drawing State
     const [drawingStrokes, setDrawingStrokes] = useState<DrawingStroke[]>([]);
@@ -524,6 +526,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         const handleResize = () => {
             setViewportKey((k) => k + 1);
             setIsNarrow(window.innerWidth < 1024);
+            // recompute panel height on desktop to keep canvas above it
+            if (panelRef.current) {
+                setPanelHeight(panelRef.current.getBoundingClientRect().height);
+            }
         };
         handleResize();
         window.addEventListener('resize', handleResize);
@@ -1527,6 +1533,23 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         );
     }
 
+    // Measure the bottom panel on desktop so the canvas resizes to sit above it.
+    useEffect(() => {
+        if (isNarrow || !panelContent) {
+            setPanelHeight(0);
+            return;
+        }
+        if (panelRef.current) {
+            setPanelHeight(panelRef.current.getBoundingClientRect().height);
+        }
+    }, [panelContent, isNarrow]);
+
+    const desktopBottomPadding = Math.max(280, panelHeight ? panelHeight + 56 : 0);
+    const paddingTop = isNarrow ? 56 : 72;
+    const paddingRight = isNarrow ? 80 : 120;
+    const paddingBottom = isNarrow ? 140 : desktopBottomPadding;
+    const paddingLeft = isNarrow ? 12 : 32;
+
     return (
         <div className="relative w-screen h-screen bg-black overflow-hidden">
             {/* Full-Screen Canvas Container */}
@@ -1534,8 +1557,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 ref={containerRef}
                 className="absolute inset-0 flex items-start justify-center bg-zinc-950"
                 style={{
-                    // On desktop, reserve extra space so the bottom panel sits below the meme instead of overlapping it.
-                    padding: isNarrow ? '56px 80px 140px 12px' : '72px 120px 320px 32px',
+                    padding: `${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`,
                 }}
             >
                 <div className="relative">
@@ -1695,7 +1717,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             {/* Bottom Panel (tool options / selection settings) */}
             {panelContent && (
                 <div className="absolute left-0 right-20 bottom-0 px-4 pb-4 pointer-events-none z-30">
-                    <div className="max-w-5xl mx-auto">
+                    <div className="max-w-5xl mx-auto" ref={panelRef}>
                         <div className="pointer-events-auto bg-zinc-900/95 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-md">
                             {panelContent}
                         </div>
