@@ -118,6 +118,7 @@ const HUB_SUBREDDIT = 'meme_gen_1_dev';
 const BASE64_UPLOAD_LIMIT_BYTES = 2.5 * 1024 * 1024;
 
 const STICKERS = [
+    { name: 'Brie President', src: '/stickers/brie-president-icon.jpeg' },
     { name: 'Speech Bubble', src: '/stickers/sticker_speech_bubble_1_1764881023554.png' },
     { name: 'Thought Cloud', src: '/stickers/sticker_speech_bubble_2_1764881039454.png' },
     { name: 'Up Arrow', src: '/stickers/sticker_arrow_up_1764881051412.png' },
