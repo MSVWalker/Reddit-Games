@@ -466,7 +466,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [postError, setPostError] = useState<string | null>(null);
     const [postSuccessUrl, setPostSuccessUrl] = useState<string | null>(null);
     const [postingKey, setPostingKey] = useState<string | null>(null);
-    const [customTarget, setCustomTarget] = useState<'install' | 'hub'>('install');
     const [sessionInfo, setSessionInfo] = useState<SessionResponse | null>(null);
     const [shareStatus, setShareStatus] = useState<string | null>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -1201,6 +1200,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
     const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
     const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim());
+    const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
     const postingHint = !sessionInfo?.loggedIn
         ? 'Log in with Reddit to post directly.'
         : !postTitle.trim()
@@ -1868,17 +1868,58 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                             <X className="w-5 h-5" />
                         </button>
 
-                        <h3 className="text-lg font-bold text-white mb-3">Meme Ready! 🎉</h3>
-                        <div className="p-2 bg-zinc-950 rounded-xl border border-zinc-800 mb-3">
+                        <h3 className="text-lg font-bold text-white mb-4">Meme Ready! 🎉</h3>
+                        <div className="text-left space-y-2 mb-4">
+                            <label className="text-[11px] uppercase tracking-wide text-white/60">Title</label>
+                            <input
+                                type="text"
+                                value={postTitle}
+                                onChange={(e) => setPostTitle(e.target.value)}
+                                maxLength={300}
+                                placeholder="Give your meme a title"
+                                className="w-full rounded-lg border border-white/10 bg-zinc-950/70 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
+                            />
+                            {postingHint && <p className="text-[11px] text-white/60">{postingHint}</p>}
+                        </div>
+
+                        <div className="p-2 bg-zinc-950 rounded-xl border border-zinc-800 mb-4">
                             <img src={previewUrl} alt="Meme" className="w-full rounded-lg" />
                         </div>
+
+                        <div className="space-y-3 text-left mb-4">
+                            <button
+                                onClick={() => handlePostToReddit('hub', 'link')}
+                                disabled={!canPostMeme || actionIsPosting('hub-link')}
+                                className={clsx(
+                                    "w-full py-3 rounded-2xl text-base font-semibold transition-colors",
+                                    canPostMeme && !actionIsPosting('hub-link')
+                                        ? "bg-purple-600 text-white hover:bg-purple-500"
+                                        : "bg-white/10 text-white/50 cursor-not-allowed"
+                                )}
+                            >
+                                {actionIsPosting('hub-link') ? 'Posting…' : `Post to r/${HUB_SUBREDDIT}`}
+                            </button>
+                            <button
+                                onClick={() => handlePostToReddit('install', 'link')}
+                                disabled={!canPostInstall || actionIsPosting('install-link')}
+                                className={clsx(
+                                    "w-full py-2 rounded-xl border text-sm font-semibold transition-colors",
+                                    canPostInstall && !actionIsPosting('install-link')
+                                        ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                        : "bg-white/5 border-white/10 text-white/40 cursor-not-allowed"
+                                )}
+                            >
+                                {actionIsPosting('install-link') ? 'Posting…' : `Post to ${installSubredditLabel}`}
+                            </button>
+                        </div>
+
                         {(copyStatus || shareStatus) && (
                             <div className="space-y-1 mb-2">
                                 {copyStatus && <p className="text-[11px] text-white/70 text-center">{copyStatus}</p>}
                                 {shareStatus && <p className="text-[11px] text-white/70 text-center">{shareStatus}</p>}
                             </div>
                         )}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left items-start">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left items-start mb-4">
                             <div className="rounded-lg bg-white/5 border border-white/10 p-2 shadow-sm space-y-1">
                                 <p className="text-[11px] uppercase tracking-wide text-white/60">iOS Users</p>
                                 <p className="text-[12px] text-white/75">Hold or right-click the image to copy/share.</p>
@@ -1911,86 +1952,18 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 </button>
                             </div>
                         </div>
-                        <div className="mt-4 text-left space-y-2">
-                            <label className="text-[11px] uppercase tracking-wide text-white/60">Title</label>
-                            <input
-                                type="text"
-                                value={postTitle}
-                                onChange={(e) => setPostTitle(e.target.value)}
-                                maxLength={300}
-                                placeholder="Give your meme a title"
-                                className="w-full rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
-                            />
-                            <p className="text-[11px] text-white/60">{postingHint}</p>
-                        </div>
-                        <div className="mt-3 space-y-3">
-                            <div className="grid sm:grid-cols-2 gap-2">
-                                <button
-                                    onClick={() => handlePostToReddit('install', 'link')}
-                                    disabled={!canPostMeme || actionIsPosting('install-link')}
-                                    className={clsx(
-                                        "w-full py-2 rounded-xl border text-sm font-semibold transition-colors",
-                                        canPostMeme
-                                            ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
-                                            : "bg-white/5 border-white/10 text-white/40 cursor-not-allowed"
-                                    )}
-                                >
-                                    {actionIsPosting('install-link') ? 'Posting…' : `Post to ${installSubredditLabel}`}
-                                </button>
-                                <button
-                                    onClick={() => handlePostToReddit('hub', 'link')}
-                                    disabled={!canPostMeme || actionIsPosting('hub-link')}
-                                    className={clsx(
-                                        "w-full py-2 rounded-xl border text-sm font-semibold transition-colors",
-                                        canPostMeme
-                                            ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
-                                            : "bg-white/5 border-white/10 text-white/40 cursor-not-allowed"
-                                    )}
-                                >
-                                    {actionIsPosting('hub-link') ? 'Posting…' : `Share to r/${HUB_SUBREDDIT}`}
-                                </button>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3 text-left">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div>
-                                        <p className="text-sm font-semibold text-white">Custom Post</p>
-                                        <p className="text-[11px] text-white/60">Renders inside the Devvit experience.</p>
-                                    </div>
-                                    <select
-                                        value={customTarget}
-                                        onChange={(e) => setCustomTarget(e.target.value as 'install' | 'hub')}
-                                        className="bg-zinc-900/80 text-white text-xs rounded-lg border border-white/20 px-2 py-1"
-                                    >
-                                        <option value="install">{installSubredditLabel}</option>
-                                        <option value="hub">{`r/${HUB_SUBREDDIT}`}</option>
-                                    </select>
-                                </div>
-                                <button
-                                    onClick={() => handlePostToReddit(customTarget, 'custom')}
-                                    disabled={!canPostMeme || actionIsPosting(`${customTarget}-custom`)}
-                                    className={clsx(
-                                        "w-full py-2 rounded-xl bg-purple-600 text-white text-sm font-semibold transition-colors",
-                                        !canPostMeme || actionIsPosting(`${customTarget}-custom`)
-                                            ? "opacity-70 cursor-not-allowed"
-                                            : "hover:bg-purple-500"
-                                    )}
-                                >
-                                    {actionIsPosting(`${customTarget}-custom`) ? 'Posting…' : 'Create custom post'}
-                                </button>
-                            </div>
-                        </div>
-                        {postError && <p className="text-sm text-red-400 mt-3">{postError}</p>}
+                        {postError && <p className="text-sm text-red-400 mb-2">{postError}</p>}
                         {postSuccessUrl && (
                             <a
                                 href={postSuccessUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-2 inline-flex items-center justify-center text-xs text-purple-300 hover:text-purple-100"
+                                className="mb-2 inline-flex items-center justify-center text-xs text-purple-300 hover:text-purple-100"
                             >
                                 View your post on Reddit ↗
                             </a>
                         )}
-                        <button onClick={() => setShowSaveModal(false)} className="w-full mt-3 py-2.5 rounded-xl bg-white/90 text-black font-bold hover:bg-zinc-200 transition-colors">
+                        <button onClick={() => setShowSaveModal(false)} className="w-full mt-1 py-2.5 rounded-xl bg-white/90 text-black font-bold hover:bg-zinc-200 transition-colors">
                             Close
                         </button>
                     </div>
