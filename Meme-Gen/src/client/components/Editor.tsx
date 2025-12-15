@@ -115,6 +115,7 @@ const POPULAR_EMOJIS = [
 
 const DEFAULT_FONT_STACK = 'Impact, Arial Black, sans-serif';
 const HUB_SUBREDDIT = 'meme_gen_1_dev';
+const BASE64_UPLOAD_LIMIT_BYTES = 2.5 * 1024 * 1024;
 
 const STICKERS = [
     { name: 'Speech Bubble', src: '/stickers/sticker_speech_bubble_1_1764881023554.png' },
@@ -492,11 +493,45 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         return new Blob([u8arr], { type: mime });
     };
 
-    const estimateDataUrlBytes = (dataUrl: string) => {
-        const base64 = dataUrl.split(',')[1];
-        if (!base64) return 0;
-        const padding = (base64.match(/=+$/) ?? [''])[0].length;
-        return Math.floor((base64.length * 3) / 4) - padding;
+    const getBase64Length = (dataUrl: string) => {
+        const commaIndex = dataUrl.indexOf(',');
+        if (commaIndex === -1) return dataUrl.length;
+        return dataUrl.length - commaIndex - 1;
+    };
+
+    const exportScaledJpeg = (source: HTMLCanvasElement, scale: number, quality: number) => {
+        if (scale >= 0.999) return source.toDataURL('image/jpeg', quality);
+        const scaled = document.createElement('canvas');
+        scaled.width = Math.max(1, Math.round(source.width * scale));
+        scaled.height = Math.max(1, Math.round(source.height * scale));
+        const ctx = scaled.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(source, 0, 0, scaled.width, scaled.height);
+        }
+        return scaled.toDataURL('image/jpeg', quality);
+    };
+
+    const generateShareImage = (canvas: HTMLCanvasElement) => {
+        let quality = 0.92;
+        let scale = 1;
+        let attempt = 0;
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let base64Bytes = getBase64Length(dataUrl);
+
+        while (base64Bytes > BASE64_UPLOAD_LIMIT_BYTES && attempt < 8) {
+            if (quality > 0.6) {
+                quality = Math.max(0.6, quality - 0.1);
+            } else if (scale > 0.5) {
+                scale = Math.max(0.5, scale * 0.85);
+            } else {
+                break;
+            }
+            dataUrl = exportScaledJpeg(canvas, scale, quality);
+            base64Bytes = getBase64Length(dataUrl);
+            attempt++;
+        }
+
+        return { dataUrl, base64Bytes };
     };
     const copyImage = async (url: string) => {
         try {
@@ -1104,10 +1139,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         setTimeout(() => {
             const canvas = canvasRef.current!;
             const jpegUrl = canvas.toDataURL('image/jpeg', 0.9);
-            const pngUrl = canvas.toDataURL('image/png');
+            const upload = generateShareImage(canvas);
             setPreviewUrl(jpegUrl);
-            setShareImageData(pngUrl);
-            setShareImageBytes(estimateDataUrlBytes(pngUrl));
+            setShareImageData(upload.dataUrl);
+            setShareImageBytes(upload.base64Bytes);
             setPostError(null);
             setPostSuccessUrl(null);
             setShareStatus(null);
@@ -1166,6 +1201,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             setPostError('Log in to Reddit to share your meme.');
             return;
         }
+        if (overLimit) {
+            setPostError('Meme is over the 2.5 MB upload cap. Try simplifying your design or downloading instead.');
+            return;
+        }
 
         const title = postTitle.trim();
         if (!title) {
@@ -1208,15 +1247,17 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     };
 
     const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
-    const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim());
+    const overLimit = shareImageBytes !== null && shareImageBytes > BASE64_UPLOAD_LIMIT_BYTES;
+    const shareSizeMB = shareImageBytes !== null ? shareImageBytes / (1024 * 1024) : null;
+    const nearingLimit = shareSizeMB !== null && shareSizeMB >= 2.2 && !overLimit;
+    const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim() && !overLimit);
     const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
-    const shareSizeMB = shareImageBytes ? shareImageBytes / (1024 * 1024) : null;
-    const nearingLimit = shareSizeMB !== null && shareSizeMB >= 18;
-    const overLimit = shareSizeMB !== null && shareSizeMB > 20;
     const postingHint = !sessionInfo?.loggedIn
         ? 'Log in with Reddit to post directly.'
         : !postTitle.trim()
             ? 'Add a title to share your meme.'
+            : overLimit
+                ? 'Meme is over the 2.5 MB upload limit. Try simplifying or downloading.'
             : '';
     const actionIsPosting = (key: string) => postingKey === key;
     const overflowRatio = isNarrow ? 0.2 : 0;
@@ -1925,7 +1966,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                             : "text-white/60"
                                 )}
                             >
-                                Estimated upload size: {shareSizeMB.toFixed(2)} MB (limit 20 MB)
+                                Estimated upload size: {shareSizeMB.toFixed(2)} MB (limit {(
+                                    BASE64_UPLOAD_LIMIT_BYTES / (1024 * 1024)
+                                ).toFixed(1)} MB)
                             </p>
                         )}
 
