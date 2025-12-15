@@ -1869,21 +1869,37 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         </button>
 
                         <h3 className="text-lg font-bold text-white mb-4">Meme Ready! 🎉</h3>
-                        <div className="text-left space-y-2 mb-4">
-                            <label className="text-[11px] uppercase tracking-wide text-white/60">Title</label>
-                            <input
-                                type="text"
-                                value={postTitle}
-                                onChange={(e) => setPostTitle(e.target.value)}
-                                maxLength={300}
-                                placeholder="Give your meme a title"
-                                className="w-full rounded-lg border border-white/10 bg-zinc-950/70 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
-                            />
-                            {postingHint && <p className="text-[11px] text-white/60">{postingHint}</p>}
-                        </div>
 
-                        <div className="p-2 bg-zinc-950 rounded-xl border border-zinc-800 mb-4">
-                            <img src={previewUrl} alt="Meme" className="w-full rounded-lg" />
+                        <div className="bg-[#0f0f0f] rounded-2xl border border-white/10 mb-4 overflow-hidden">
+                            <div className="px-4 pt-4 pb-3 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm">
+                                            r
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-white">r/{HUB_SUBREDDIT}</p>
+                                            <p className="text-[11px] text-white/50">
+                                                {sessionInfo?.username ?? 'you'} • just now
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="text-white/40 text-xl leading-none">•••</span>
+                                </div>
+                                <textarea
+                                    value={postTitle}
+                                    onChange={(e) => setPostTitle(e.target.value)}
+                                    maxLength={300}
+                                    placeholder="Title"
+                                    className="w-full bg-transparent border-none text-2xl font-semibold text-white placeholder-white/30 focus:outline-none resize-none leading-tight"
+                                />
+                                {postingHint && <p className="text-[11px] text-white/50">{postingHint}</p>}
+                            </div>
+                            <div className="bg-black px-4 pb-4">
+                                <div className="rounded-2xl overflow-hidden border border-white/10">
+                                    <img src={previewUrl} alt="Meme" className="w-full" />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="space-y-3 text-left mb-4">
