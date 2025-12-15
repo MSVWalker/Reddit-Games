@@ -1533,7 +1533,10 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             <div
                 ref={containerRef}
                 className="absolute inset-0 flex items-start justify-center bg-zinc-950"
-                style={{ padding: isNarrow ? '56px 80px 140px 12px' : '72px 96px 180px 24px' }} // leave room for top bar, right column + bottom panel
+                style={{
+                    // On desktop, reserve extra space so the bottom panel sits below the meme instead of overlapping it.
+                    padding: isNarrow ? '56px 80px 140px 12px' : '72px 120px 320px 32px',
+                }}
             >
                 <div className="relative">
                     <canvas
