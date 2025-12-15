@@ -14,6 +14,7 @@ import {
     AlignRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import type { PostMemeResponse, SessionResponse } from '../../shared/types/api';
 
 interface EditorProps {
     templateSrc: string;
@@ -113,6 +114,7 @@ const POPULAR_EMOJIS = [
 ];
 
 const DEFAULT_FONT_STACK = 'Impact, Arial Black, sans-serif';
+const HUB_SUBREDDIT = 'meme_gen_1_dev';
 
 const STICKERS = [
     { name: 'Speech Bubble', src: '/stickers/sticker_speech_bubble_1_1764881023554.png' },
@@ -455,10 +457,19 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     // UI State
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [showSaveModal, setShowSaveModal] = useState(false);
-    const [saveUrl, setSaveUrl] = useState<string | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [shareImageData, setShareImageData] = useState<string | null>(null);
     const [activeTool, setActiveTool] = useState<ActiveTool>(null); // Which tool panel is expanded
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [panelHeight, setPanelHeight] = useState(0);
+    const [postTitle, setPostTitle] = useState('');
+    const [postError, setPostError] = useState<string | null>(null);
+    const [postSuccessUrl, setPostSuccessUrl] = useState<string | null>(null);
+    const [postingKey, setPostingKey] = useState<string | null>(null);
+    const [customTarget, setCustomTarget] = useState<'install' | 'hub'>('install');
+    const [sessionInfo, setSessionInfo] = useState<SessionResponse | null>(null);
+    const [shareStatus, setShareStatus] = useState<string | null>(null);
+    const [isSharing, setIsSharing] = useState(false);
 
     // Drawing State
     const [drawingStrokes, setDrawingStrokes] = useState<DrawingStroke[]>([]);
@@ -510,6 +521,28 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         const scaled = image.width * 0.18;
         return Math.round(Math.min(160, Math.max(32, scaled)));
     };
+
+    useEffect(() => {
+        let ignore = false;
+        const loadSession = async () => {
+            try {
+                const res = await fetch('/api/session');
+                if (!res.ok) throw new Error('Failed to fetch session');
+                const data = (await res.json()) as SessionResponse;
+                if (!ignore) {
+                    setSessionInfo(data);
+                }
+            } catch {
+                if (!ignore) {
+                    setSessionInfo(null);
+                }
+            }
+        };
+        loadSession();
+        return () => {
+            ignore = true;
+        };
+    }, []);
 
     // Load Image
     useEffect(() => {
@@ -1062,8 +1095,14 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         setEditingTextId(null);
         // Wait for render cycle to clear selection box
         setTimeout(() => {
-            const url = canvasRef.current!.toDataURL('image/jpeg', 0.9);
-            setSaveUrl(url);
+            const canvas = canvasRef.current!;
+            const jpegUrl = canvas.toDataURL('image/jpeg', 0.9);
+            const pngUrl = canvas.toDataURL('image/png');
+            setPreviewUrl(jpegUrl);
+            setShareImageData(pngUrl);
+            setPostError(null);
+            setPostSuccessUrl(null);
+            setShareStatus(null);
             setShowSaveModal(true);
         }, 50);
     };
@@ -1075,6 +1114,99 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
     };
 
+    const handleShare = async () => {
+        if (!shareImageData) return;
+        setIsSharing(true);
+        setShareStatus(null);
+        try {
+            const blob = dataUrlToBlob(shareImageData);
+            if (navigator.share && blob.size > 0) {
+                const file = new File([blob], 'meme.png', { type: 'image/png' });
+                await navigator.share({
+                    files: [file],
+                    title: postTitle || 'My Meme',
+                });
+                setShareStatus('Shared!');
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'meme.png';
+                a.click();
+                URL.revokeObjectURL(url);
+                setShareStatus('Saved meme for sharing.');
+            }
+        } catch {
+            setShareStatus('Unable to share automatically. Please download instead.');
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    const getTargetSubreddit = (target: 'install' | 'hub') => {
+        if (target === 'hub') return HUB_SUBREDDIT;
+        const subreddit = sessionInfo?.subreddit?.trim();
+        return subreddit || '';
+    };
+
+    const handlePostToReddit = async (target: 'install' | 'hub', mode: 'link' | 'custom') => {
+        if (!shareImageData) {
+            setPostError('Please generate a meme first.');
+            return;
+        }
+        if (!sessionInfo?.loggedIn) {
+            setPostError('Log in to Reddit to share your meme.');
+            return;
+        }
+
+        const title = postTitle.trim();
+        if (!title) {
+            setPostError('Enter a title before posting.');
+            return;
+        }
+
+        const subreddit = getTargetSubreddit(target);
+        if (!subreddit) {
+            setPostError('No subreddit available. Install the app or pick the hub.');
+            return;
+        }
+
+        const key = `${target}-${mode}`;
+        setPostingKey(key);
+        setPostError(null);
+        setPostSuccessUrl(null);
+        try {
+            const res = await fetch('/api/post-meme', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    base64Image: shareImageData,
+                    title,
+                    targetSubreddit: subreddit,
+                    postMode: mode,
+                }),
+            });
+            const data = (await res.json()) as PostMemeResponse;
+            if (!res.ok || data.status !== 'success') {
+                throw new Error(data.status === 'error' ? data.message : 'Failed to post meme.');
+            }
+            setPostSuccessUrl(data.url);
+            window.open(data.url, '_blank', 'noopener,noreferrer');
+        } catch (error) {
+            setPostError(error instanceof Error ? error.message : 'Failed to post meme.');
+        } finally {
+            setPostingKey(null);
+        }
+    };
+
+    const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
+    const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim());
+    const postingHint = !sessionInfo?.loggedIn
+        ? 'Log in with Reddit to post directly.'
+        : !postTitle.trim()
+            ? 'Add a title to share your meme.'
+            : '';
+    const actionIsPosting = (key: string) => postingKey === key;
     const overflowRatio = isNarrow ? 0.2 : 0;
 
     const updateTextContent = (id: string, content: string) => {
@@ -1726,9 +1858,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             )}
 
             {/* Save Modal */}
-            {showSaveModal && saveUrl && (
-                <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95 duration-200">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 w-full max-w-md text-center shadow-2xl relative">
+            {showSaveModal && previewUrl && (
+                <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in zoom-in-95 duration-200">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-5 w-full max-w-md text-center shadow-2xl relative max-h-[90vh] overflow-y-auto scrollbar-thin">
                         <button
                             onClick={() => setShowSaveModal(false)}
                             className="absolute top-4 right-4 text-zinc-500 hover:text-white"
@@ -1738,32 +1870,126 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
                         <h3 className="text-lg font-bold text-white mb-3">Meme Ready! 🎉</h3>
                         <div className="p-2 bg-zinc-950 rounded-xl border border-zinc-800 mb-3">
-                            <img src={saveUrl} alt="Meme" className="w-full rounded-lg" />
+                            <img src={previewUrl} alt="Meme" className="w-full rounded-lg" />
                         </div>
-                        {copyStatus && <p className="text-[11px] text-white/70 mb-2 text-center">{copyStatus}</p>}
-                        <div className="grid grid-cols-2 gap-2 text-left items-start">
-                            <div className="rounded-lg bg-white/5 border border-white/10 p-2 shadow-sm space-y-1 sm:pr-3">
+                        {(copyStatus || shareStatus) && (
+                            <div className="space-y-1 mb-2">
+                                {copyStatus && <p className="text-[11px] text-white/70 text-center">{copyStatus}</p>}
+                                {shareStatus && <p className="text-[11px] text-white/70 text-center">{shareStatus}</p>}
+                            </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left items-start">
+                            <div className="rounded-lg bg-white/5 border border-white/10 p-2 shadow-sm space-y-1">
                                 <p className="text-[11px] uppercase tracking-wide text-white/60">iOS Users</p>
                                 <p className="text-[12px] text-white/75">Hold or right-click the image to copy/share.</p>
                             </div>
-                            <div className="rounded-lg bg-white/5 border border-white/10 p-2 shadow-sm space-y-1 sm:border-l sm:border-white/10 sm:pl-3">
-                                <p className="text-[11px] uppercase tracking-wide text-white/60">Android Users</p>
-                                <p className="text-[12px] text-white/75">Tap download or copy image.</p>
+                            <div className="rounded-lg bg-white/5 border border-white/10 p-2 shadow-sm space-y-2">
+                                <p className="text-[11px] uppercase tracking-wide text-white/60">Android & Desktop</p>
+                                <p className="text-[12px] text-white/75">Use download, copy, or system share.</p>
                                 <a
-                                    href={saveUrl}
-                                    download="meme.jpg"
+                                    href={shareImageData ?? previewUrl}
+                                    download="meme.png"
                                     className="w-full text-center py-1.5 rounded-md bg-white/5 text-white text-sm font-semibold hover:bg-white/10 transition-colors border border-white/10 block"
                                 >
                                     Download
                                 </a>
                                 <button
-                                    onClick={() => copyImage(saveUrl)}
+                                    onClick={() => copyImage(shareImageData ?? previewUrl)}
                                     className="w-full py-1.5 rounded-md bg-white/5 text-white text-sm font-semibold hover:bg-white/10 transition-colors border border-white/10"
                                 >
                                     Copy image
                                 </button>
+                                <button
+                                    onClick={handleShare}
+                                    disabled={isSharing}
+                                    className={clsx(
+                                        "w-full py-1.5 rounded-md bg-purple-600/80 text-white text-sm font-semibold transition-colors border border-purple-500/60",
+                                        isSharing ? "opacity-70 cursor-not-allowed" : "hover:bg-purple-500/80"
+                                    )}
+                                >
+                                    {isSharing ? 'Sharing…' : 'Share'}
+                                </button>
                             </div>
                         </div>
+                        <div className="mt-4 text-left space-y-2">
+                            <label className="text-[11px] uppercase tracking-wide text-white/60">Title</label>
+                            <input
+                                type="text"
+                                value={postTitle}
+                                onChange={(e) => setPostTitle(e.target.value)}
+                                maxLength={300}
+                                placeholder="Give your meme a title"
+                                className="w-full rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
+                            />
+                            <p className="text-[11px] text-white/60">{postingHint}</p>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                            <div className="grid sm:grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => handlePostToReddit('install', 'link')}
+                                    disabled={!canPostMeme || actionIsPosting('install-link')}
+                                    className={clsx(
+                                        "w-full py-2 rounded-xl border text-sm font-semibold transition-colors",
+                                        canPostMeme
+                                            ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                            : "bg-white/5 border-white/10 text-white/40 cursor-not-allowed"
+                                    )}
+                                >
+                                    {actionIsPosting('install-link') ? 'Posting…' : `Post to ${installSubredditLabel}`}
+                                </button>
+                                <button
+                                    onClick={() => handlePostToReddit('hub', 'link')}
+                                    disabled={!canPostMeme || actionIsPosting('hub-link')}
+                                    className={clsx(
+                                        "w-full py-2 rounded-xl border text-sm font-semibold transition-colors",
+                                        canPostMeme
+                                            ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                            : "bg-white/5 border-white/10 text-white/40 cursor-not-allowed"
+                                    )}
+                                >
+                                    {actionIsPosting('hub-link') ? 'Posting…' : `Share to r/${HUB_SUBREDDIT}`}
+                                </button>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-3 text-left">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <p className="text-sm font-semibold text-white">Custom Post</p>
+                                        <p className="text-[11px] text-white/60">Renders inside the Devvit experience.</p>
+                                    </div>
+                                    <select
+                                        value={customTarget}
+                                        onChange={(e) => setCustomTarget(e.target.value as 'install' | 'hub')}
+                                        className="bg-zinc-900/80 text-white text-xs rounded-lg border border-white/20 px-2 py-1"
+                                    >
+                                        <option value="install">{installSubredditLabel}</option>
+                                        <option value="hub">{`r/${HUB_SUBREDDIT}`}</option>
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={() => handlePostToReddit(customTarget, 'custom')}
+                                    disabled={!canPostMeme || actionIsPosting(`${customTarget}-custom`)}
+                                    className={clsx(
+                                        "w-full py-2 rounded-xl bg-purple-600 text-white text-sm font-semibold transition-colors",
+                                        !canPostMeme || actionIsPosting(`${customTarget}-custom`)
+                                            ? "opacity-70 cursor-not-allowed"
+                                            : "hover:bg-purple-500"
+                                    )}
+                                >
+                                    {actionIsPosting(`${customTarget}-custom`) ? 'Posting…' : 'Create custom post'}
+                                </button>
+                            </div>
+                        </div>
+                        {postError && <p className="text-sm text-red-400 mt-3">{postError}</p>}
+                        {postSuccessUrl && (
+                            <a
+                                href={postSuccessUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex items-center justify-center text-xs text-purple-300 hover:text-purple-100"
+                            >
+                                View your post on Reddit ↗
+                            </a>
+                        )}
                         <button onClick={() => setShowSaveModal(false)} className="w-full mt-3 py-2.5 rounded-xl bg-white/90 text-black font-bold hover:bg-zinc-200 transition-colors">
                             Close
                         </button>

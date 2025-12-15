@@ -1,11 +1,17 @@
 import express from "express";
-import { InitResponse, DailyCountResponse, SessionResponse } from "../shared/types/api";
-import { createServer, context, getServerPort, reddit, redis } from "@devvit/web/server";
+import {
+  InitResponse,
+  DailyCountResponse,
+  SessionResponse,
+  PostMemeRequest,
+  PostMemeResponse,
+} from "../shared/types/api";
+import { createServer, context, getServerPort, reddit, redis, media } from "@devvit/web/server";
 
 const app = express();
 
 // Lightweight limits appropriate for Devvit webview requests
-app.use(express.json({ limit: "4mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use(express.text({ limit: "2mb" }));
 
@@ -113,6 +119,93 @@ router.post<{}, DailyCountResponse | { status: string; message: string }>(
     }
   }
 );
+
+router.post<{}, PostMemeResponse, PostMemeRequest>("/api/post-meme", async (req, res): Promise<void> => {
+  const { base64Image, title, targetSubreddit, postMode } = req.body ?? {};
+  if (!context.userId) {
+    res.status(401).json({ status: "error", message: "You must be logged in to post." });
+    return;
+  }
+
+  const trimmedTitle = typeof title === "string" ? title.trim().slice(0, 300) : "";
+  if (!trimmedTitle) {
+    res.status(400).json({ status: "error", message: "A title is required." });
+    return;
+  }
+
+  const imageData = typeof base64Image === "string" ? base64Image.trim() : "";
+  if (!imageData.startsWith("data:image/")) {
+    res.status(400).json({ status: "error", message: "Invalid image payload." });
+    return;
+  }
+
+  const requestedSubreddit =
+    typeof targetSubreddit === "string" ? targetSubreddit.replace(/^r\//i, "").trim() : "";
+  const defaultSubreddit = context.subredditName?.trim();
+  const subredditName = (requestedSubreddit || defaultSubreddit || "").trim();
+
+  if (!subredditName) {
+    res.status(400).json({
+      status: "error",
+      message: "No subreddit provided and unable to detect the current community.",
+    });
+    return;
+  }
+
+  const mode: "link" | "custom" = postMode === "custom" ? "custom" : "link";
+
+  try {
+    const uploadedAsset = await media.upload({ type: "image", url: imageData });
+    if (!uploadedAsset?.mediaUrl) {
+      throw new Error("Image upload failed.");
+    }
+
+    const sharedPostOptions = {
+      title: trimmedTitle,
+      subredditName,
+      runAs: "USER" as const,
+    };
+
+    const post =
+      mode === "custom"
+        ? await reddit.submitCustomPost({
+            ...sharedPostOptions,
+            userGeneratedContent: {
+              text: trimmedTitle,
+              imageUrls: [uploadedAsset.mediaUrl],
+            },
+            entry: "game",
+            textFallback: {
+              text: `${trimmedTitle} (Meme created in Meme Gen)`,
+            },
+          })
+        : await reddit.submitPost({
+            ...sharedPostOptions,
+            url: uploadedAsset.mediaUrl,
+          });
+
+    const permalink =
+      typeof post?.permalink === "string" && post.permalink.length > 0
+        ? `https://www.reddit.com${post.permalink}`
+        : `https://www.reddit.com/r/${subredditName}/comments/${post?.id ?? ""}`;
+
+    res.json({
+      status: "success",
+      postId: post?.id ?? "",
+      url: permalink,
+      subreddit: subredditName,
+      mode,
+    });
+  } catch (error) {
+    console.error("Failed to post meme", error);
+    const message = error instanceof Error ? error.message : "Failed to share meme.";
+
+    res.status(500).json({
+      status: "error",
+      message,
+    });
+  }
+});
 
 app.use(router);
 

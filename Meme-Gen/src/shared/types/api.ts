@@ -29,3 +29,25 @@ export type SessionResponse = {
   loggedIn: boolean;
   username: string | null;
 };
+
+export type PostMemeRequest = {
+  base64Image: string;
+  title: string;
+  targetSubreddit?: string;
+  postMode?: "link" | "custom";
+};
+
+export type PostMemeSuccessResponse = {
+  status: "success";
+  postId: string;
+  url: string;
+  subreddit: string;
+  mode: "link" | "custom";
+};
+
+export type PostMemeErrorResponse = {
+  status: "error";
+  message: string;
+};
+
+export type PostMemeResponse = PostMemeSuccessResponse | PostMemeErrorResponse;
