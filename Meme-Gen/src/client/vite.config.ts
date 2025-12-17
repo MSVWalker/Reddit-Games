@@ -13,12 +13,6 @@ export default defineConfig({
         splash: "splash.html",
         game: "game.html",
       },
-      output: {
-        entryFileNames: "[name].js",
-        chunkFileNames: "[name].js",
-        assetFileNames: "[name][extname]",
-        sourcemapFileNames: "[name].js.map",
-      },
     },
   },
 });
