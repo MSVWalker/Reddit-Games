@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "predev": "node tools/bump-version.js",
+    "predeploy": "node tools/bump-version.js",
     "postinstall": "npm run build",
     "build:client": "cd src/client && vite build",
     "build:server": "cd src/server && vite build",
