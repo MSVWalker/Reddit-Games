@@ -5,6 +5,8 @@ import {
     Trash2,
     X,
     ChevronLeft,
+    Check,
+    Circle,
     Smile,
     Pencil,
     RotateCcw,
@@ -1186,13 +1188,13 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const overLimit = shareImageBytes !== null && shareImageBytes > BASE64_UPLOAD_LIMIT_BYTES;
     const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim() && !overLimit);
     const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
+    const hasTitle = Boolean(postTitle.trim());
+    const postCreated = Boolean(postSuccessUrl);
     const postingHint = !sessionInfo?.loggedIn
         ? 'Log in with Reddit to post directly.'
-        : !postTitle.trim()
-            ? 'Add a title to share your meme.'
-            : overLimit
-                ? 'Meme is over the 2.5 MB upload limit. Try simplifying or downloading.'
-            : '';
+        : overLimit
+            ? 'This meme is too large to upload. Try simplifying or download it instead.'
+        : '';
     const actionIsPosting = (key: string) => postingKey === key;
     const overflowRatio = isNarrow ? 0.2 : 0;
 
@@ -1856,24 +1858,92 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         </button>
 
                         <div className="space-y-1 pr-8">
-                            <p className="text-xs font-semibold tracking-[0.15em] text-white/50 uppercase">Ready to post?</p>
                             <h3 className="text-2xl font-bold text-white">Post meme</h3>
-                            <p className="text-sm text-white/60">Posting to r/{HUB_SUBREDDIT}</p>
+                            <p className="text-sm text-white/70">
+                                Posting to <span className="font-semibold text-[#ff4500]">r/{HUB_SUBREDDIT}</span>
+                            </p>
                         </div>
 
-                        <div className="mt-5 space-y-3">
-                            <textarea
+                        <div className="mt-5 space-y-2">
+                            <input
+                                type="text"
                                 value={postTitle}
                                 onChange={(e) => setPostTitle(e.target.value)}
                                 maxLength={300}
                                 placeholder="Add a title..."
-                                className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-base text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400/60 resize-none"
+                                className="w-full h-12 rounded-xl bg-white/5 border border-white/10 px-4 text-base text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
                             />
                             {postingHint && <p className="text-xs text-white/50">{postingHint}</p>}
                         </div>
 
                         <div className="mt-4 rounded-3xl overflow-hidden border border-white/10 bg-black">
                             <img src={previewUrl} alt="Meme" className="w-full" />
+                        </div>
+
+                        <div className="mt-4 space-y-2">
+                            <div
+                                className={clsx(
+                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
+                                    'bg-white/5 border-white/10'
+                                )}
+                            >
+                                <div className="flex items-center gap-2 text-sm text-white/80">
+                                    <Check className="w-4 h-4 text-green-400" />
+                                    <span>
+                                        <span className="font-semibold">Step 1:</span> Create meme
+                                    </span>
+                                </div>
+                                <span className="text-xs font-semibold text-green-400">Done</span>
+                            </div>
+
+                            <div
+                                className={clsx(
+                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
+                                    hasTitle ? 'bg-white/5 border-white/10' : 'bg-white/5 border-[#ff4500]/40'
+                                )}
+                            >
+                                <div className="flex items-center gap-2 text-sm text-white/80">
+                                    {hasTitle ? (
+                                        <Check className="w-4 h-4 text-green-400" />
+                                    ) : (
+                                        <Circle className="w-4 h-4 text-[#ff4500]" />
+                                    )}
+                                    <span>
+                                        <span className="font-semibold">Step 2:</span> Create title
+                                    </span>
+                                </div>
+                                <span className={clsx('text-xs font-semibold', hasTitle ? 'text-green-400' : 'text-[#ff4500]')}>
+                                    {hasTitle ? 'Done' : 'Next'}
+                                </span>
+                            </div>
+
+                            <div
+                                className={clsx(
+                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
+                                    postCreated ? 'bg-white/5 border-white/10' : hasTitle ? 'bg-white/5 border-[#ff4500]/30' : 'bg-white/5 border-white/10'
+                                )}
+                            >
+                                <div className="flex items-center gap-2 text-sm text-white/80">
+                                    {postCreated ? (
+                                        <Check className="w-4 h-4 text-green-400" />
+                                    ) : hasTitle ? (
+                                        <Circle className="w-4 h-4 text-[#ff4500]" />
+                                    ) : (
+                                        <Circle className="w-4 h-4 text-white/30" />
+                                    )}
+                                    <span>
+                                        <span className="font-semibold">Step 3:</span> Post to community
+                                    </span>
+                                </div>
+                                <span
+                                    className={clsx(
+                                        'text-xs font-semibold',
+                                        postCreated ? 'text-green-400' : hasTitle ? 'text-[#ff4500]' : 'text-white/40'
+                                    )}
+                                >
+                                    {postCreated ? 'Done' : hasTitle ? 'Next' : 'Pending'}
+                                </span>
+                            </div>
                         </div>
 
                         <div className="mt-6 space-y-3">
@@ -1884,7 +1954,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 className={clsx(
                                     "w-full py-3 rounded-2xl font-semibold text-base transition-colors",
                                     canPostMeme && !actionIsPosting('hub-link')
-                                        ? "bg-orange-500 text-white hover:bg-orange-400"
+                                        ? "bg-[#ff4500] text-white hover:bg-[#ff571a]"
                                         : "bg-white/10 text-white/40 cursor-not-allowed"
                                 )}
                             >
