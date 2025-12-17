@@ -1890,7 +1890,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 <div className="flex items-center gap-2 text-sm text-white/80">
                                     <Check className="w-4 h-4 text-green-400" />
                                     <span>
-                                        <span className="font-semibold">Step 1:</span> Create meme
+                                        <span className="font-semibold">Step 1:</span> Create Meme
                                     </span>
                                 </div>
                                 <span className="text-xs font-semibold text-green-400">Done</span>
@@ -1932,7 +1932,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                         <Circle className="w-4 h-4 text-white/30" />
                                     )}
                                     <span>
-                                        <span className="font-semibold">Step 3:</span> Post to community
+                                        <span className="font-semibold">Step 3:</span> Post to Community
                                     </span>
                                 </div>
                                 <span
