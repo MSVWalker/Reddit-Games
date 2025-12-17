@@ -25,12 +25,24 @@
     "redis": true,
     "reddit": {
       "enable": true,
-      "asUser": [
-        "SUBMIT_POST"
-      ]
+      "asUser": ["SUBMIT_POST"]
     }
   },
   "dev": {
     "subreddit": "meme_gen_1_dev"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create MemeGen post",
+        "description": "Creates the MemeGen splash/game post in this subreddit",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/post-create"
+      }
+    ]
+  },
+  "triggers": {
+    "onAppInstall": "/internal/on-app-install"
   }
 }

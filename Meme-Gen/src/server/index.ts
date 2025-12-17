@@ -207,6 +207,45 @@ router.post<{}, PostMemeResponse, PostMemeRequest>("/api/post-meme", async (req,
   }
 });
 
+const createMemeGenPost = async () => {
+  return await reddit.submitCustomPost({
+    title: "Meme Gen",
+  });
+};
+
+router.post("/internal/on-app-install", async (_req, res): Promise<void> => {
+  try {
+    const post = await createMemeGenPost();
+
+    res.json({
+      status: "success",
+      message: `Created a Meme Gen post in r/${context.subredditName} (id: ${post.id})`,
+    });
+  } catch (error) {
+    console.error("Error creating Meme Gen post on install", error);
+    res.status(400).json({
+      status: "error",
+      message: "Failed to create Meme Gen post",
+    });
+  }
+});
+
+router.post("/internal/menu/post-create", async (_req, res): Promise<void> => {
+  try {
+    const post = await createMemeGenPost();
+
+    res.json({
+      navigateTo: `https://reddit.com/r/${context.subredditName}/comments/${post.id}`,
+    });
+  } catch (error) {
+    console.error("Error creating Meme Gen post from menu", error);
+    res.status(400).json({
+      status: "error",
+      message: "Failed to create Meme Gen post",
+    });
+  }
+});
+
 app.use(router);
 
 const server = createServer(app);
