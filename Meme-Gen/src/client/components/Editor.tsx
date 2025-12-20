@@ -754,14 +754,19 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
                     ctx.fillRect(-wrapWidth / 2 - 12, -boxHeight / 2 - 6, wrapWidth + 24, boxHeight + 12);
                 }
 
-                ctx.fillStyle = el.color;
-                ctx.strokeStyle = el.strokeColor || (el.color === '#ffffff' ? '#000000' : '#ffffff');
-                ctx.lineWidth = el.fontSize / 20;
-
+                const outlineColor = el.strokeColor || (el.color === '#ffffff' ? '#000000' : '#ffffff');
+                const outlineOffset = el.fontSize / 20;
                 const lineOffset = (lineHeight - el.fontSize) / 2;
                 lines.forEach((line, i) => {
                     const y = contentTop + i * lineHeight + lineOffset;
-                    ctx.strokeText(line, textX, y);
+                    if (outlineOffset > 0) {
+                        ctx.fillStyle = outlineColor;
+                        ctx.fillText(line, textX - outlineOffset, y - outlineOffset);
+                        ctx.fillText(line, textX + outlineOffset, y - outlineOffset);
+                        ctx.fillText(line, textX - outlineOffset, y + outlineOffset);
+                        ctx.fillText(line, textX + outlineOffset, y + outlineOffset);
+                    }
+                    ctx.fillStyle = el.color;
                     ctx.fillText(line, textX, y);
                 });
             } else if (el.type === 'emoji') {
@@ -1390,13 +1395,12 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
     const editingTextareaWidthPx = (() => {
         if (!editingElement || !image) return 0;
         const canvasCssWidth = image.width * scale;
-        const minPx = Math.min(160, canvasCssWidth);
         const baseWrap =
             typeof editingElement.wrapWidth === 'number' && Number.isFinite(editingElement.wrapWidth)
                 ? editingElement.wrapWidth
-                : image.width * 0.4;
+                : Math.max(120, editingElement.fontSize * 6);
         const desiredPx = baseWrap * scale;
-        return clamp(desiredPx, minPx, canvasCssWidth);
+        return clamp(desiredPx, 1, canvasCssWidth);
     })();
     const editingContentHeightPx = editingMetrics ? editingMetrics.contentHeight * scale : 0;
     const editingTextareaHeightPx = editingMetrics ? Math.max(editingMetrics.boxHeight * scale, editingContentHeightPx) : editingContentHeightPx;
