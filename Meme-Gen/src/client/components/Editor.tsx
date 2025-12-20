@@ -21,7 +21,24 @@ import type { PostMemeResponse, SessionResponse } from '../../shared/types/api';
 interface EditorProps {
     templateSrc: string;
     onBack: () => void;
+    templateMode?: boolean;
 }
+
+type TemplateBox = {
+    x: number;
+    y: number;
+    wrapWidth: number;
+    boxHeight: number;
+    fontSize: number;
+    maxFontSize?: number;
+    align?: TextElement['align'];
+    rotation?: number;
+    fontFamily?: string;
+    color?: string;
+    strokeColor?: string;
+    bgColor?: string;
+    content?: string;
+};
 
 interface TextElement {
     id: string;
@@ -116,7 +133,6 @@ const POPULAR_EMOJIS = [
 ];
 
 const DEFAULT_FONT_STACK = 'Impact, Arial Black, sans-serif';
-const HUB_SUBREDDIT = 'meme_gen_1_dev';
 const BASE64_UPLOAD_LIMIT_BYTES = 2.5 * 1024 * 1024;
 
 const STICKERS = [
@@ -244,43 +260,23 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, content: string, maxWidth:
     const wrapped: string[] = [];
 
     for (const hardLine of hardLines) {
-        const trimmed = hardLine.trim();
-        if (!trimmed) {
+        const words = hardLine.split(/\s+/).filter(Boolean);
+        if (words.length === 0) {
             wrapped.push('');
             continue;
         }
 
-        const words = trimmed.split(/\s+/).filter(Boolean);
         let line = '';
-
         for (const word of words) {
             const next = line ? `${line} ${word}` : word;
             if (ctx.measureText(next).width <= width) {
                 line = next;
-                continue;
-            }
-
-            if (line) wrapped.push(line);
-
-            if (ctx.measureText(word).width <= width) {
+            } else {
+                if (line) wrapped.push(line);
                 line = word;
-                continue;
             }
-
-            let chunk = '';
-            for (const ch of Array.from(word)) {
-                const test = chunk + ch;
-                if (chunk === '' || ctx.measureText(test).width <= width) {
-                    chunk = test;
-                    continue;
-                }
-                wrapped.push(chunk);
-                chunk = ch;
-            }
-            line = chunk || word;
         }
-
-        wrapped.push(line);
+        if (line) wrapped.push(line);
     }
 
     return wrapped.length ? wrapped : [''];
@@ -289,17 +285,11 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, content: string, maxWidth:
 const getTextMetrics = (ctx: CanvasRenderingContext2D, el: TextElement) => {
     const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
     ctx.font = `900 ${el.fontSize}px ${fontStack}`;
-    const desiredWrapWidth =
-        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
-            ? el.wrapWidth
-            : Math.max(120, el.fontSize * 6);
-    const wrapWidth = Math.max(1, desiredWrapWidth);
+    const wrapWidth = Math.max(1, typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth) ? el.wrapWidth : Math.max(120, el.fontSize * 6));
     const lines = wrapTextLines(ctx, el.content, wrapWidth);
-    const lineHeight = el.fontSize * 1.12;
-    const measuredMax = Math.max(...lines.map((line) => ctx.measureText(line).width), 0);
-    const maxWidth = Math.min(wrapWidth, Math.max(measuredMax, el.fontSize));
-    const height = lineHeight * lines.length;
-    return { lines, lineHeight, maxWidth, height, fontStack };
+    const lineHeight = el.fontSize * 1.1;
+    const height = lineHeight * Math.max(1, lines.length);
+    return { lines, lineHeight, wrapWidth, height, fontStack };
 };
 
 const getMaxFittableTextFontSize = (
@@ -308,38 +298,25 @@ const getMaxFittableTextFontSize = (
     imageWidth: number,
     imageHeight: number
 ) => {
+    const wrapWidth = Math.max(1, typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth) ? el.wrapWidth : Math.max(120, el.fontSize * 6));
+    const baseBoxHeight = Math.max(20, typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? el.boxHeight : Math.max(el.fontSize * 1.6, 60));
     const fontStack = el.fontFamily || DEFAULT_FONT_STACK;
-    const desiredWrapWidth =
-        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
-            ? el.wrapWidth
-            : Math.max(120, el.fontSize * 6);
-    const wrapWidth = Math.max(1, desiredWrapWidth);
-    const baseBoxHeight =
-        typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? Math.max(1, el.boxHeight) : 1;
     const minFontSize = 2;
     const maxCandidate = Math.max(minFontSize, Math.floor(Math.min(240, imageWidth, imageHeight)));
 
-    const fits = (fontSize: number) => {
-        ctx.font = `900 ${fontSize}px ${fontStack}`;
+    let best = minFontSize;
+    for (let size = minFontSize; size <= maxCandidate; size++) {
+        ctx.font = `900 ${size}px ${fontStack}`;
         const lines = wrapTextLines(ctx, el.content, wrapWidth);
-        const lineHeight = fontSize * 1.12;
-        const contentHeight = lineHeight * lines.length;
+        const lineHeight = size * 1.1;
+        const contentHeight = lineHeight * Math.max(1, lines.length);
         const rectWidth = wrapWidth + TEXT_BOX_PADDING * 2;
         const rectHeight = Math.max(contentHeight, baseBoxHeight) + TEXT_BOX_PADDING * 2;
         const aabb = getRotatedAabbSize(rectWidth, rectHeight, el.rotation);
-        return aabb.width <= imageWidth && aabb.height <= imageHeight;
-    };
-
-    let lo = minFontSize;
-    let hi = maxCandidate;
-    let best = minFontSize;
-    while (lo <= hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        if (fits(mid)) {
-            best = mid;
-            lo = mid + 1;
+        if (aabb.width <= imageWidth && aabb.height <= imageHeight) {
+            best = size;
         } else {
-            hi = mid - 1;
+            break;
         }
     }
     return best;
@@ -352,14 +329,8 @@ const getElementBox = (ctx: CanvasRenderingContext2D, el: CanvasElement): Elemen
     if (el.type === 'emoji') {
         return { cx: el.x, cy: el.y, width: el.size, height: el.size, rotation: el.rotation };
     }
-    const desiredWrapWidth =
-        typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth)
-            ? el.wrapWidth
-            : Math.max(120, el.fontSize * 6);
-    const wrapWidth = Math.max(1, desiredWrapWidth);
-    const { height } = getTextMetrics(ctx, el);
-    const desiredBoxHeight = typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? el.boxHeight : height;
-    const boxHeight = Math.max(height, desiredBoxHeight);
+    const wrapWidth = Math.max(1, typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth) ? el.wrapWidth : Math.max(120, el.fontSize * 6));
+    const boxHeight = Math.max(20, typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight) ? el.boxHeight : Math.max(el.fontSize * 1.6, 60));
     return {
         cx: el.x,
         cy: el.y,
@@ -396,6 +367,16 @@ const constrainElementToImage = (
             fontSize = Math.min(fontSize, fitCap);
         }
         const nextText: TextElement = { ...el, fontSize, maxFontSize, wrapWidth, boxHeight };
+        console.debug("[text] constrain", {
+            id: el.id,
+            wrapWidth,
+            boxHeight,
+            fontSize,
+            maxFontSize,
+            imageWidth,
+            imageHeight,
+            overflowRatio,
+        });
         const box = ctx
             ? getElementBox(ctx, nextText)
             : {
@@ -441,7 +422,7 @@ const getHandlePoints = (box: ElementBox): { handle: ResizeHandle; point: Point 
     });
 };
 
-export function Editor({ templateSrc, onBack }: EditorProps) {
+export function Editor({ templateSrc, onBack, templateMode = false }: EditorProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -469,8 +450,12 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [postTitle, setPostTitle] = useState('');
     const [postError, setPostError] = useState<string | null>(null);
     const [postSuccessUrl, setPostSuccessUrl] = useState<string | null>(null);
+    const [postCompleted, setPostCompleted] = useState(false);
     const [postingKey, setPostingKey] = useState<string | null>(null);
     const [sessionInfo, setSessionInfo] = useState<SessionResponse | null>(null);
+    const [templateLayouts, setTemplateLayouts] = useState<Record<string, { boxes: TemplateBox[] }>>({});
+    const [savingTemplate, setSavingTemplate] = useState(false);
+    const [templateSaveStatus, setTemplateSaveStatus] = useState<string | null>(null);
 
     // Drawing State
     const [drawingStrokes, setDrawingStrokes] = useState<DrawingStroke[]>([]);
@@ -480,6 +465,11 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const [brushSize, setBrushSize] = useState(3);
     const [drawMode, setDrawMode] = useState<'draw' | 'erase'>('draw');
     const [drawLayer, setDrawLayer] = useState<'behind' | 'front'>('front');
+    const templateId = (() => {
+        const match = templateSrc.match(/\/memes\/([^?]+)/i);
+        if (match?.[1]) return match[1].toLowerCase();
+        return null;
+    })();
     const getBase64Length = (dataUrl: string) => {
         const commaIndex = dataUrl.indexOf(',');
         if (commaIndex === -1) return dataUrl.length;
@@ -564,6 +554,45 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         };
     }, [templateSrc]);
 
+    useEffect(() => {
+        if (!image || !templateId) return;
+        const preset = templateLayouts[templateId];
+        if (!preset || !Array.isArray(preset.boxes)) return;
+        const hasTextElements = elements.some((el) => el.type === 'text');
+        if (hasTextElements) return;
+        const textElements: TextElement[] = preset.boxes.map((box, idx) => ({
+            id: `preset-${idx}-${Date.now()}`,
+            type: 'text',
+            content: box.content ?? '',
+            x: box.x,
+            y: box.y,
+            wrapWidth: box.wrapWidth,
+            boxHeight: box.boxHeight,
+            fontSize: box.fontSize,
+            maxFontSize: box.maxFontSize ?? box.fontSize,
+            align: 'center',
+            rotation: box.rotation ?? 0,
+            fontFamily: box.fontFamily || DEFAULT_FONT_STACK,
+            color: box.color || '#ffffff',
+            strokeColor: box.strokeColor || '#000000',
+            bgColor: box.bgColor ?? 'transparent',
+        }));
+        setElements(textElements);
+    }, [image, templateId, templateLayouts, elements]);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch('/api/template-layouts')
+            .then((res) => (res.ok ? res.json() : {}))
+            .then((data) => {
+                if (!cancelled) setTemplateLayouts(data || {});
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     // Recompute layout on resize to keep the canvas contained on mobile
     useEffect(() => {
         const handleResize = () => {
@@ -591,9 +620,15 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         const editingElement = editingTextId ? elements.find(el => el.id === editingTextId && el.type === 'text') as TextElement | undefined : undefined;
         const ta = textAreaRef.current;
         if (editingElement && ta) {
-            ta.focus();
-            ta.style.height = 'auto';
-            ta.style.height = `${ta.scrollHeight}px`;
+            const focusAndSize = () => {
+                ta.focus({ preventScroll: true });
+                const len = ta.value.length;
+                if (typeof ta.setSelectionRange === 'function') {
+                    ta.setSelectionRange(len, len);
+                }
+            };
+            requestAnimationFrame(focusAndSize);
+            console.debug("[text] editing start", { id: editingElement.id, wrapWidth: editingElement.wrapWidth, boxHeight: editingElement.boxHeight, fontSize: editingElement.fontSize, contentLength: editingElement.content.length });
         }
     }, [editingTextId, elements, scale]);
 
@@ -688,31 +723,44 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
             ctx.save();
             if (el.type === 'text') {
-                const align = el.align ?? 'center';
-                const { lines, lineHeight, maxWidth, height, fontStack } = getTextMetrics(ctx, el);
-                const wrapWidth =
-                    typeof el.wrapWidth === 'number' && Number.isFinite(el.wrapWidth) ? el.wrapWidth : maxWidth;
+                const align: 'left' | 'center' | 'right' = 'center';
+                const { lines, lineHeight, wrapWidth, height: contentHeight, fontStack } = getTextMetrics(ctx, el);
                 ctx.font = `900 ${el.fontSize}px ${fontStack}`;
                 ctx.textAlign = align;
-                ctx.textBaseline = 'middle';
+                ctx.textBaseline = 'top';
 
-                const startY = -((lines.length - 1) * lineHeight) / 2;
+                const desiredBoxHeight = typeof el.boxHeight === 'number' && Number.isFinite(el.boxHeight)
+                    ? el.boxHeight
+                    : Math.max(el.fontSize * 1.6, 60);
+                const boxHeight = Math.max(desiredBoxHeight, 20);
                 const textX = align === 'left' ? -wrapWidth / 2 : align === 'right' ? wrapWidth / 2 : 0;
+                const contentTop = -(boxHeight / 2) + (boxHeight - contentHeight) / 2;
+                console.debug("[text] render", {
+                    id: el.id,
+                    wrapWidth,
+                    boxHeight,
+                    contentHeight,
+                    lines: lines.length,
+                    fontSize: el.fontSize,
+                    textX,
+                    contentTop,
+                });
 
                 ctx.translate(el.x, el.y);
                 ctx.rotate(degToRad(el.rotation));
 
                 if (el.bgColor !== 'transparent') {
                     ctx.fillStyle = el.bgColor;
-                    ctx.fillRect(-wrapWidth / 2 - 12, startY - el.fontSize / 2 - 6, wrapWidth + 24, height + 12);
+                    ctx.fillRect(-wrapWidth / 2 - 12, -boxHeight / 2 - 6, wrapWidth + 24, boxHeight + 12);
                 }
 
                 ctx.fillStyle = el.color;
                 ctx.strokeStyle = el.strokeColor || (el.color === '#ffffff' ? '#000000' : '#ffffff');
                 ctx.lineWidth = el.fontSize / 20;
 
+                const lineOffset = (lineHeight - el.fontSize) / 2;
                 lines.forEach((line, i) => {
-                    const y = startY + i * lineHeight;
+                    const y = contentTop + i * lineHeight + lineOffset;
                     ctx.strokeText(line, textX, y);
                     ctx.fillText(line, textX, y);
                 });
@@ -740,16 +788,16 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
 
         const selectedEl = selectedId ? elements.find((el) => el.id === selectedId) : undefined;
-        if (selectedEl && selectedEl.id !== editingTextId) {
+        if (selectedEl) {
             const box = getElementBox(ctx, selectedEl);
             const handleRadius = 10;
 
             ctx.save();
             ctx.translate(box.cx, box.cy);
             ctx.rotate(degToRad(box.rotation));
-            ctx.strokeStyle = '#a855f7';
+            ctx.strokeStyle = '#ff6b00';
             ctx.lineWidth = 3;
-            ctx.setLineDash([10, 10]);
+            ctx.setLineDash([6, 8]);
             ctx.strokeRect(-box.width / 2, -box.height / 2, box.width, box.height);
             ctx.setLineDash([]);
 
@@ -759,7 +807,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 const hy = sy * (box.height / 2);
                 ctx.beginPath();
                 ctx.fillStyle = '#ffffff';
-                ctx.strokeStyle = '#a855f7';
+                ctx.strokeStyle = '#ff6b00';
                 ctx.lineWidth = 3;
                 ctx.arc(hx, hy, handleRadius, 0, Math.PI * 2);
                 ctx.fill();
@@ -773,32 +821,36 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 
 
     // Handlers
-	    const handleAddText = () => {
-	        if (!image) return;
-	        const fontSize = getDefaultFontSize();
-	        const maxWrapWidth = Math.max(80, image.width - TEXT_BOX_PADDING * 2 - 16);
-	        const maxBoxHeight = Math.max(60, image.height - TEXT_BOX_PADDING * 2 - 16);
-	        const newEl: TextElement = {
-	            id: `text-${Date.now()}`,
-	            type: 'text',
-	            content: '',
-	            x: image.width / 2,
-	            y: image.height / 2,
-	            fontSize,
-	            maxFontSize: fontSize,
-	            color: '#ffffff',
-	            strokeColor: '#000000',
-	            fontFamily: DEFAULT_FONT_STACK,
-	            wrapWidth: clamp(image.width * 0.4, 80, maxWrapWidth),
-	            boxHeight: clamp(Math.max(Math.round(fontSize * 1.6), 60), 60, maxBoxHeight),
-	            bgColor: 'transparent',
-	            rotation: 0,
-	            align: 'center',
-	        };
-	        setElements([...elements, newEl]);
-	        setSelectedId(newEl.id);
-	        setEditingTextId(newEl.id);
-	    };
+	    const firstTapTextAddedRef = useRef(false);
+
+    const handleAddText = () => {
+        if (!image) return;
+        const fontSize = getDefaultFontSize();
+        const maxWrapWidth = Math.max(80, image.width - TEXT_BOX_PADDING * 2 - 16);
+        const maxBoxHeight = Math.max(60, image.height - TEXT_BOX_PADDING * 2 - 16);
+        const newEl: TextElement = {
+            id: `text-${Date.now()}`,
+            type: 'text',
+            content: '',
+            x: image.width / 2,
+            y: image.height / 2,
+            fontSize,
+            maxFontSize: fontSize,
+            color: '#ffffff',
+            strokeColor: '#000000',
+            fontFamily: DEFAULT_FONT_STACK,
+            wrapWidth: clamp(image.width * 0.4, 80, maxWrapWidth),
+            boxHeight: clamp(Math.max(Math.round(fontSize * 1.6), 60), 60, maxBoxHeight),
+            bgColor: 'transparent',
+            rotation: 0,
+            align: 'center',
+        };
+        setElements([...elements, newEl]);
+        setSelectedId(newEl.id);
+        setEditingTextId(newEl.id);
+        firstTapTextAddedRef.current = true;
+        console.debug("[text] add", { id: newEl.id, fontSize: newEl.fontSize, wrapWidth: newEl.wrapWidth, boxHeight: newEl.boxHeight, x: newEl.x, y: newEl.y });
+    };
 
     const handleAddEmoji = (emoji: string) => {
         if (!image) return;
@@ -885,6 +937,12 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         const coords = getCanvasCoordinates(e);
         if (!coords) return;
         const { x, y } = coords;
+
+        // First tap: auto-add a text box once
+        if (!firstTapTextAddedRef.current && elements.every(el => el.type !== 'text')) {
+            handleAddText();
+            return;
+        }
 
         // Drawing mode
         if (activeTool === 'draw') {
@@ -1113,6 +1171,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             setShareImageBytes(upload.base64Bytes);
             setPostError(null);
             setPostSuccessUrl(null);
+            setPostCompleted(false);
             setShowSaveModal(true);
         }, 50);
     };
@@ -1124,13 +1183,8 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
     };
 
-    const getTargetSubreddit = (target: 'install' | 'hub') => {
-        if (target === 'hub') return HUB_SUBREDDIT;
-        const subreddit = sessionInfo?.subreddit?.trim();
-        return subreddit || '';
-    };
-
-    const handlePostToReddit = async (target: 'install' | 'hub', mode: 'link' | 'custom') => {
+    const handlePostToReddit = async (mode: 'link' | 'custom') => {
+        if (postCompleted) return;
         if (!shareImageData) {
             setPostError('Please generate a meme first.');
             return;
@@ -1150,13 +1204,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
             return;
         }
 
-        const subreddit = getTargetSubreddit(target);
-        if (!subreddit) {
-            setPostError('No subreddit available. Install the app or pick the hub.');
-            return;
-        }
-
-        const key = `${target}-${mode}`;
+        const key = `post-${mode}`;
         setPostingKey(key);
         setPostError(null);
         setPostSuccessUrl(null);
@@ -1167,7 +1215,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 body: JSON.stringify({
                     base64Image: shareImageData,
                     title,
-                    targetSubreddit: subreddit,
                     postMode: mode,
                 }),
             });
@@ -1176,6 +1223,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                 throw new Error(data.status === 'error' ? data.message : 'Failed to post meme.');
             }
             setPostSuccessUrl(data.url);
+            setPostCompleted(true);
             window.open(data.url, '_blank', 'noopener,noreferrer');
         } catch (error) {
             setPostError(error instanceof Error ? error.message : 'Failed to post meme.');
@@ -1184,10 +1232,9 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         }
     };
 
-    const installSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'Install community';
+    const postingSubredditLabel = sessionInfo?.subreddit ? `r/${sessionInfo.subreddit}` : 'this community';
     const overLimit = shareImageBytes !== null && shareImageBytes > BASE64_UPLOAD_LIMIT_BYTES;
     const canPostMeme = Boolean(sessionInfo?.loggedIn && shareImageData && postTitle.trim() && !overLimit);
-    const canPostInstall = canPostMeme && Boolean(sessionInfo?.subreddit);
     const hasTitle = Boolean(postTitle.trim());
     const postCreated = Boolean(postSuccessUrl);
     const postingHint = !sessionInfo?.loggedIn
@@ -1199,14 +1246,12 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
     const overflowRatio = isNarrow ? 0.2 : 0;
 
     const updateTextContent = (id: string, content: string) => {
-        const ctx = canvasRef.current?.getContext('2d') ?? null;
         setElements((prev) =>
             prev.map((el) => {
                 if (el.id !== id || el.type !== 'text') return el;
-                const next: TextElement = { ...el, content };
-                return image
-                    ? (constrainElementToImage(ctx, next, image.width, image.height, overflowRatio) as TextElement)
-                    : next;
+                const next = { ...el, content, align: 'center' };
+                console.debug("[text] update content", { id, length: content.length, wrapWidth: next.wrapWidth, boxHeight: next.boxHeight });
+                return next;
             })
         );
     };
@@ -1274,26 +1319,87 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         });
     };
 
+    const handleSaveTemplateLayout = async () => {
+        if (!templateMode) return;
+        if (!templateId) {
+            setTemplateSaveStatus("No template id available for saving.");
+            return;
+        }
+        const textBoxes = elements.filter((el): el is TextElement => el.type === 'text');
+        if (textBoxes.length === 0) {
+            setTemplateSaveStatus("Add at least one text box before saving.");
+            return;
+        }
+        const payload = {
+            templateId,
+            boxes: textBoxes.map((el) => ({
+                x: el.x,
+                y: el.y,
+                wrapWidth: el.wrapWidth,
+                boxHeight: el.boxHeight,
+                fontSize: el.fontSize,
+                maxFontSize: el.maxFontSize,
+                align: 'center',
+                rotation: el.rotation,
+                fontFamily: el.fontFamily,
+                color: el.color,
+                strokeColor: el.strokeColor,
+                bgColor: el.bgColor,
+                content: el.content,
+            })),
+        };
+        try {
+            setSavingTemplate(true);
+            setTemplateSaveStatus(null);
+            const res = await fetch("/api/template-layouts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(`Save failed (${res.status})`);
+            setTemplateSaveStatus("Template layout saved.");
+            setTemplateLayouts((prev) => ({
+                ...prev,
+                [templateId]: { boxes: payload.boxes },
+            }));
+        } catch (err) {
+            setTemplateSaveStatus(err instanceof Error ? err.message : "Failed to save template layout.");
+        } finally {
+            setSavingTemplate(false);
+        }
+    };
+
     const selectedElement = elements.find(el => el.id === selectedId);
     const editingElement = elements.find(el => el.id === editingTextId) as TextElement | undefined;
     const editingStrokeColor =
         editingElement?.strokeColor || (editingElement?.color === '#ffffff' ? '#000000' : '#ffffff');
+    const editingMetrics = (() => {
+        if (!editingElement || !image || !canvasRef.current) return null;
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return null;
+        const { lineHeight, height: contentHeight, wrapWidth } = getTextMetrics(ctx, editingElement);
+        const boxHeight = Math.max(
+            20,
+            typeof editingElement.boxHeight === 'number' && Number.isFinite(editingElement.boxHeight)
+                ? editingElement.boxHeight
+                : Math.max(editingElement.fontSize * 1.6, 60)
+        );
+        return { wrapWidth, lineHeight, contentHeight, boxHeight };
+    })();
+
     const editingTextareaWidthPx = (() => {
         if (!editingElement || !image) return 0;
         const canvasCssWidth = image.width * scale;
-        const maxPx = canvasCssWidth * 0.95;
-        const minPx = Math.min(160, maxPx);
-        const desiredWrapWidth =
+        const minPx = Math.min(160, canvasCssWidth);
+        const baseWrap =
             typeof editingElement.wrapWidth === 'number' && Number.isFinite(editingElement.wrapWidth)
                 ? editingElement.wrapWidth
-                : (() => {
-                    const ctx = canvasRef.current?.getContext('2d');
-                    if (!ctx) return Math.max(120, (image.width * 0.4));
-                    return getTextMetrics(ctx, editingElement).maxWidth;
-                })();
-        const desiredPx = desiredWrapWidth * scale;
-        return clamp(desiredPx, minPx, maxPx);
+                : image.width * 0.4;
+        const desiredPx = baseWrap * scale;
+        return clamp(desiredPx, minPx, canvasCssWidth);
     })();
+    const editingContentHeightPx = editingMetrics ? editingMetrics.contentHeight * scale : 0;
+    const editingTextareaHeightPx = editingMetrics ? Math.max(editingMetrics.boxHeight * scale, editingContentHeightPx) : editingContentHeightPx;
     const editingTextareaLeftPx = (() => {
         if (!editingElement || !image) return 0;
         const canvasCssWidth = image.width * scale;
@@ -1303,26 +1409,22 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
         if (maxX <= minX) return canvasCssWidth / 2;
         return clamp(editingElement.x * scale, minX, maxX);
     })();
-	    const editingTextareaTopPx = (() => {
-	        if (!editingElement || !image) return 0;
-	        const canvasCssHeight = image.height * scale;
-	        const margin = 12;
-	        const lineCount = (() => {
-	            const ctx = canvasRef.current?.getContext('2d');
-	            if (!ctx || scale <= 0) return getTextLines(editingElement.content).length;
-	            const fontStack = editingElement.fontFamily || DEFAULT_FONT_STACK;
-	            ctx.font = `900 ${editingElement.fontSize}px ${fontStack}`;
-	            const wrapWidth = Math.max(1, editingTextareaWidthPx / scale);
-	            return wrapTextLines(ctx, editingElement.content, wrapWidth).length;
-	        })();
-	        const approxHeightPx = Math.max(
-	            editingElement.fontSize * scale * 1.5,
-	            (lineCount * editingElement.fontSize * 1.12 + 24) * scale
-	        );
-        const minY = approxHeightPx / 2 + margin;
-        const maxY = canvasCssHeight - approxHeightPx / 2 - margin;
+    const editingTextareaTopPx = (() => {
+        if (!editingElement || !image) return 0;
+        const canvasCssHeight = image.height * scale;
+        const margin = 12;
+        const totalHeight = editingTextareaHeightPx;
+        const minY = totalHeight / 2 + margin;
+        const maxY = canvasCssHeight - totalHeight / 2 - margin;
         if (maxY <= minY) return canvasCssHeight / 2;
         return clamp(editingElement.y * scale, minY, maxY);
+    })();
+    const editingPaddingPx = (() => {
+        if (!editingMetrics) return { top: 0, bottom: 0 };
+        const boxPx = editingTextareaHeightPx;
+        const contentPx = editingContentHeightPx;
+        const pad = Math.max(0, (boxPx - contentPx) / 2);
+        return { top: pad, bottom: pad };
     })();
 
     let panelContent: React.ReactNode = null;
@@ -1352,7 +1454,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
 	    } else if (activeTool === 'add-image') {
 	        panelContent = (
 	            <div className="p-2">
-	                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add image</p>
+	                <p className="text-[10px] text-white/50 uppercase tracking-wide mb-2 px-1">Add assets</p>
 	                <div className="max-h-60 overflow-y-auto pr-1 space-y-2">
 	                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
 	                        {STICKERS.map((item) => (
@@ -1409,7 +1511,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         min="1" max="10"
                         value={brushSize}
                         onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                        className="w-full accent-purple-500 h-1"
+                        className="w-full accent-orange-500 h-1"
                     />
                 </div>
                 <div className="space-y-1.5">
@@ -1528,7 +1630,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 clamp(Number(e.target.value), 8, getMaxFontSize())
                             )
                         }
-                        className="w-full accent-purple-500 h-1"
+                        className="w-full accent-orange-500 h-1"
                     />
                 </div>
                 {/* Alignment */}
@@ -1564,7 +1666,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         min="-180" max="180"
                         value={(selectedElement as TextElement).rotation}
                     onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
-                    className="w-full accent-purple-500 h-1"
+                    className="w-full accent-orange-500 h-1"
                 />
             </div>
             </div>
@@ -1589,21 +1691,21 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         </button>
                     </div>
                 </div>
-                <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Emoji Size</p>
+                <p className="text-[9px] text-orange-300 uppercase tracking-wide font-bold">Emoji Size</p>
                 <input
                     type="range"
                     min="20" max="150"
                     value={(selectedElement as EmojiElement).size}
                     onChange={(e) => updateStyle('size', parseInt(e.target.value))}
-                    className="w-full accent-purple-500 h-1"
+                    className="w-full accent-orange-500 h-1"
                 />
-                <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Rotation</p>
+                <p className="text-[9px] text-orange-300 uppercase tracking-wide font-bold">Rotation</p>
                 <input
                     type="range"
                     min="-180" max="180"
                     value={(selectedElement as EmojiElement).rotation}
                     onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
-                    className="w-full accent-purple-500 h-1"
+                    className="w-full accent-orange-500 h-1"
                 />
             </div>
         );
@@ -1627,7 +1729,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         </button>
                     </div>
                 </div>
-                <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold">Image Size</p>
+                <p className="text-[9px] text-orange-300 uppercase tracking-wide font-bold">Asset Size</p>
                 <input
                     type="range"
                     min="20"
@@ -1639,16 +1741,16 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         updateStyle('width', newWidth);
                         updateStyle('height', newWidth / aspect);
                     }}
-                    className="w-full accent-purple-500 h-1"
+                    className="w-full accent-orange-500 h-1"
                 />
-                <p className="text-[9px] text-purple-400 uppercase tracking-wide font-bold mt-2">Rotation</p>
+                <p className="text-[9px] text-orange-300 uppercase tracking-wide font-bold mt-2">Rotation</p>
                 <input
                     type="range"
                     min="0"
                     max="360"
                     value={(selectedElement as ImageElement).rotation}
                     onChange={(e) => updateStyle('rotation', parseInt(e.target.value))}
-                    className="w-full accent-purple-500 h-1"
+                    className="w-full accent-orange-500 h-1"
                 />
             </div>
         );
@@ -1704,7 +1806,6 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         ref={textAreaRef}
                         value={editingElement.content}
                         onChange={(e) => updateTextContent(editingElement.id, e.target.value)}
-                        onBlur={() => setEditingTextId(null)}
                         autoFocus
                         style={{
                                 position: 'absolute',
@@ -1715,23 +1816,37 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                                 color: editingElement.color,
                                 fontFamily: editingElement.fontFamily || 'Impact, Arial Black, sans-serif',
                                 fontWeight: 900,
-                                    textShadow: `-${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, -${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}`,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    outline: 'none',
-                                    textAlign: editingElement.align ?? 'center',
-                                    resize: 'none',
-                                    overflow: 'hidden',
-                                    whiteSpace: 'pre-wrap',
-                                    width: `${editingTextareaWidthPx}px`,
-                                    minHeight: `${editingElement.fontSize * scale * 1.5}px`,
-                                    height: 'auto',
-                                    padding: 0,
-                                    margin: 0,
-                                    lineHeight: 1.12,
-                                }}
-                            />
-                        )}
+                                textShadow: `-${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px -${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, -${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}, ${editingElement.fontSize * scale / 20}px ${editingElement.fontSize * scale / 20}px 0 ${editingStrokeColor}`,
+                                background: 'transparent',
+                                border: 'none',
+                                outline: 'none',
+                                textAlign: 'center',
+                                resize: 'none',
+                                overflow: 'hidden',
+                                whiteSpace: 'pre-wrap',
+                                width: `${editingTextareaWidthPx}px`,
+                                height: `${editingTextareaHeightPx}px`,
+                                padding: 0,
+                                paddingTop: `${editingPaddingPx.top}px`,
+                                paddingBottom: `${editingPaddingPx.bottom}px`,
+                                margin: 0,
+                                lineHeight: editingMetrics ? `${editingMetrics.lineHeight * scale}px` : 1.12,
+                            }}
+                        onInput={() => {
+                            if (editingMetrics) {
+                                console.debug("[text] textarea", {
+                                    id: editingElement.id,
+                                    wrapWidth: editingMetrics.wrapWidth,
+                                    heightPx: editingTextareaHeightPx,
+                                    paddingTop: editingPaddingPx.top,
+                                    paddingBottom: editingPaddingPx.bottom,
+                                    lineHeight: editingMetrics.lineHeight,
+                                    contentLength: editingElement.content.length,
+                                });
+                            }
+                        }}
+                        />
+                    )}
                     </div>
 
             </div>
@@ -1745,14 +1860,31 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                     <ChevronLeft className="w-4 h-4" />
                     <span className="text-xs font-medium">Back</span>
                 </button>
-                <button
-                    onClick={handleSave}
-                    className="px-3 py-1.5 rounded-full bg-purple-600 text-white text-xs font-bold hover:bg-purple-500 transition-colors flex items-center gap-1.5 shadow-lg"
-                >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Save</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    {templateMode && (
+                        <button
+                            onClick={handleSaveTemplateLayout}
+                            disabled={savingTemplate}
+                            className="px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-1.5 shadow-lg border border-white/15"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>{savingTemplate ? 'Saving…' : 'Save Layout'}</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={handleSave}
+                        className="px-3 py-1.5 rounded-full bg-[#ff4500] text-white text-xs font-bold hover:bg-[#ff5c1c] transition-colors flex items-center gap-1.5 shadow-lg"
+                    >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{`Post to ${postingSubredditLabel}`}</span>
+                    </button>
+                </div>
             </div>
+            {templateMode && templateSaveStatus && (
+                <div className="absolute top-14 right-3 z-30 text-xs text-white/80 bg-black/50 px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
+                    {templateSaveStatus}
+                </div>
+            )}
 
             {/* Right Column - Dedicated Tool Bar */}
             <div className="absolute right-0 top-0 bottom-0 w-20 bg-zinc-900/95 backdrop-blur-md border-l border-white/10 z-40 flex flex-col">
@@ -1766,7 +1898,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         }}
                         className={clsx(
                             "w-14 h-14 flex flex-col items-center justify-center rounded-xl transition-all text-xs gap-1",
-                            activeTool === 'add-text' ? "bg-purple-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                            activeTool === 'add-text' ? "bg-[#ff4500] text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                         )}
                     >
                         <Type className="w-5 h-5" />
@@ -1778,7 +1910,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         onClick={() => toggleTool('add-emoji')}
                         className={clsx(
                             "w-14 h-14 flex flex-col items-center justify-center rounded-xl transition-all text-xs gap-1",
-                            activeTool === 'add-emoji' ? "bg-purple-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                            activeTool === 'add-emoji' ? "bg-[#ff4500] text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                         )}
                     >
                         <Smile className="w-5 h-5" />
@@ -1790,11 +1922,11 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         onClick={() => toggleTool('add-image')}
                         className={clsx(
                             "w-14 h-14 flex flex-col items-center justify-center rounded-xl transition-all text-xs gap-1",
-                            activeTool === 'add-image' ? "bg-purple-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                            activeTool === 'add-image' ? "bg-[#ff4500] text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                         )}
                     >
                         <ImageIcon className="w-5 h-5" />
-                        <span className="text-[9px]">Image</span>
+                        <span className="text-[9px]">Assets</span>
                     </button>
 
                     {/* Draw Tool */}
@@ -1802,7 +1934,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         onClick={() => toggleTool('draw')}
                         className={clsx(
                             "w-14 h-14 flex flex-col items-center justify-center rounded-xl transition-all text-xs gap-1",
-                            activeTool === 'draw' ? "bg-purple-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                            activeTool === 'draw' ? "bg-[#ff4500] text-white" : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                         )}
                     >
                         <Pencil className="w-5 h-5" />
@@ -1860,7 +1992,7 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         <div className="space-y-1 pr-8">
                             <h3 className="text-2xl font-bold text-white">Post meme</h3>
                             <p className="text-sm text-white/70">
-                                Posting to <span className="font-semibold text-[#ff4500]">r/{HUB_SUBREDDIT}</span>
+                                Posting to <span className="font-semibold text-[#ff4500]">{postingSubredditLabel}</span>
                             </p>
                         </div>
 
@@ -1949,31 +2081,21 @@ export function Editor({ templateSrc, onBack }: EditorProps) {
                         <div className="mt-6 space-y-3">
                             {postError && <p className="text-sm text-red-400">{postError}</p>}
                             <button
-                                onClick={() => handlePostToReddit('hub', 'link')}
-                                disabled={!canPostMeme || actionIsPosting('hub-link')}
+                                onClick={() => handlePostToReddit('link')}
+                                disabled={!canPostMeme || actionIsPosting('post-link') || postCompleted}
                                 className={clsx(
                                     "w-full py-3 rounded-2xl font-semibold text-base transition-colors",
-                                    canPostMeme && !actionIsPosting('hub-link')
+                                    canPostMeme && !actionIsPosting('post-link') && !postCompleted
                                         ? "bg-[#ff4500] text-white hover:bg-[#ff571a]"
                                         : "bg-white/10 text-white/40 cursor-not-allowed"
                                 )}
                             >
-                                {actionIsPosting('hub-link') ? 'Posting…' : 'Post'}
+                                {postCompleted
+                                    ? 'Finished Post'
+                                    : actionIsPosting('post-link')
+                                        ? 'Posting…'
+                                        : `Post to ${postingSubredditLabel}`}
                             </button>
-                            {sessionInfo?.subreddit && sessionInfo.subreddit.toLowerCase() !== HUB_SUBREDDIT && (
-                                <button
-                                    onClick={() => handlePostToReddit('install', 'link')}
-                                    disabled={!canPostInstall || actionIsPosting('install-link')}
-                                    className={clsx(
-                                        "w-full py-2.5 rounded-2xl border text-sm font-semibold transition-colors",
-                                        canPostInstall && !actionIsPosting('install-link')
-                                            ? "border-white/20 text-white hover:bg-white/5"
-                                            : "border-white/10 text-white/40 cursor-not-allowed"
-                                    )}
-                                >
-                                    {actionIsPosting('install-link') ? 'Posting…' : `Post to ${installSubredditLabel}`}
-                                </button>
-                            )}
                             <button
                                 onClick={() => setShowSaveModal(false)}
                                 className="w-full py-3 rounded-2xl bg-transparent border border-white/10 text-sm font-semibold text-white hover:border-white/30 transition-colors"

@@ -48,15 +48,132 @@ router.get<{}, InitResponse | { status: string; message: string }>(
 router.get<{}, SessionResponse | { status: string; message: string }>(
   "/api/session",
   async (_req, res): Promise<void> => {
-    const { subredditName, userId, username } = context;
+    const { subredditName, userId, username: contextUsername, snoovatar } = context;
+
+    let resolvedUsername: string | null = contextUsername?.trim() || null;
+    if (!resolvedUsername && userId) {
+      try {
+        resolvedUsername = (await reddit.getCurrentUsername()) ?? null;
+      } catch {
+        resolvedUsername = null;
+      }
+    }
+
+    let snoovatarUrl: string | null = snoovatar ?? null;
+    if (!snoovatarUrl && resolvedUsername) {
+      const cacheKey = `snoovatarUrl:${resolvedUsername.toLowerCase()}`;
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          snoovatarUrl = cached === "none" ? null : cached;
+        } else {
+          const fetched = await reddit.getSnoovatarUrl(resolvedUsername);
+          snoovatarUrl = fetched ?? null;
+          await redis.set(cacheKey, snoovatarUrl ?? "none");
+          await redis.expire(cacheKey, 60 * 60 * 24); // 24h
+        }
+      } catch {
+        // Ignore failures and fall back to null.
+      }
+    }
+
     res.json({
       type: "session",
       subreddit: subredditName || "",
       loggedIn: Boolean(userId),
-      username: username ?? null,
+      username: resolvedUsername,
+      snoovatarUrl,
     });
   }
 );
+
+router.get("/api/viewer-snoovatar", async (_req, res): Promise<void> => {
+  const log = (...args: unknown[]) => console.warn("[viewer-snoovatar]", ...args);
+
+  let username = context.username?.trim() || "";
+  if (!username && context.userId) {
+    try {
+      username = (await reddit.getCurrentUsername()) ?? "";
+    } catch {
+      username = "";
+    }
+  }
+
+  if (!username) {
+    log("no username available on request");
+    res.status(404).end();
+    return;
+  }
+
+  const cacheKey = `snoovatarUrl:${username.toLowerCase()}`;
+  let snoovatarUrl: string | null = context.snoovatar ?? null;
+
+  if (!snoovatarUrl) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        snoovatarUrl = cached === "none" ? null : cached;
+        log("cache hit", { username, cached: cached === "none" ? "none" : "url" });
+      } else {
+        const fetched = await reddit.getSnoovatarUrl(username);
+        snoovatarUrl = fetched ?? null;
+        await redis.set(cacheKey, snoovatarUrl ?? "none");
+        await redis.expire(cacheKey, 60 * 60 * 24);
+        log("cache miss", { username, fetched: Boolean(fetched) });
+      }
+    } catch {
+      log("error reading cache or fetching snoovatar", { username });
+      snoovatarUrl = null;
+    }
+  }
+
+  if (!snoovatarUrl) {
+    log("no snoovatar url", { username });
+    res.status(404).end();
+    return;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(snoovatarUrl);
+  } catch {
+    res.status(404).end();
+    return;
+  }
+
+  if (url.protocol !== "https:") {
+    res.status(404).end();
+    return;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const allowed = ["redd.it", "redditmedia.com", "redditstatic.com"].some(
+    (domain) => host === domain || host.endsWith(`.${domain}`)
+  );
+  if (!allowed) {
+    res.status(404).end();
+    return;
+  }
+
+  try {
+    const response = await fetch(snoovatarUrl);
+    if (!response.ok) {
+      log("upstream fetch failed", { status: response.status, username });
+      res.status(502).end();
+      return;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "image/png";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    res.status(200).send(bytes);
+  } catch (error) {
+    log("error fetching snoovatar upstream", { username, message: (error as Error)?.message });
+    res.status(502).end();
+  }
+});
 
 router.post("/api/increment", async (_req, res): Promise<void> => {
   const { postId } = context;
@@ -204,6 +321,53 @@ router.post<{}, PostMemeResponse, PostMemeRequest>("/api/post-meme", async (req,
       status: "error",
       message,
     });
+  }
+});
+
+const TEMPLATE_LAYOUTS_KEY = "template-layouts:v1";
+
+const getTemplateLayouts = async (): Promise<Record<string, any>> => {
+  const raw = await redis.get(TEMPLATE_LAYOUTS_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+};
+
+const saveTemplateLayouts = async (layouts: Record<string, any>) => {
+  await redis.set(TEMPLATE_LAYOUTS_KEY, JSON.stringify(layouts));
+};
+
+router.get("/api/template-layouts", async (_req, res): Promise<void> => {
+  try {
+    res.json(await getTemplateLayouts());
+  } catch (err) {
+    console.warn("Failed to read template layouts", err);
+    res.json({});
+  }
+});
+
+router.post("/api/template-layouts", async (req, res): Promise<void> => {
+  try {
+    const { templateId, boxes } = req.body ?? {};
+    if (typeof templateId !== "string" || !templateId.trim() || !Array.isArray(boxes)) {
+      res.status(400).json({ status: "error", message: "Invalid payload" });
+      return;
+    }
+
+    const existing = await getTemplateLayouts();
+    const next = {
+      ...existing,
+      [templateId]: { boxes },
+    };
+
+    await saveTemplateLayouts(next);
+    res.json({ status: "success" });
+  } catch (err) {
+    console.error("Failed to save template layout", err);
+    res.status(500).json({ status: "error", message: "Failed to save template layout" });
   }
 });
 

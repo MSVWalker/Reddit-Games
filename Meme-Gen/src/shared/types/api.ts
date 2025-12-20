@@ -28,6 +28,7 @@ export type SessionResponse = {
   subreddit: string;
   loggedIn: boolean;
   username: string | null;
+  snoovatarUrl: string | null;
 };
 
 export type PostMemeRequest = {

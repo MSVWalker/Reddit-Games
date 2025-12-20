@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <link rel="preload" as="image" href="splash-bg.jpg" fetchpriority="high" />
   <link rel="stylesheet" type="text/css" href="splash/splash.css" />
   <meta charset="UTF-8" />
   <meta name="viewport"
@@ -13,28 +14,31 @@
 
 <body class="splash-body">
   <div class="splash-shell">
+    <div class="splash-bg" aria-hidden="true"></div>
     <div class="collage" aria-hidden="true"></div>
+    <div class="splash-overlay" aria-hidden="true"></div>
 
     <main class="splash-main">
-      <div class="title-block">
-        <h1 class="splash-title">MEME<span class="accent">GEN</span></h1>
-        <div class="version-pill">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="app-version">v0</span>
+      <section class="hero-top">
+        <div class="title-row">
+          <h1 class="splash-title">MEME<span class="accent">GEN</span></h1>
         </div>
-      </div>
+        <p class="splash-subtitle">Create and Post Memes within Reddit.</p>
 
-      <button class="start-cta" id="start-button">
-        Start Creating
-      </button>
+        <button class="start-cta" id="start-button">
+          Create a meme
+        </button>
+      </section>
+
+      <section class="hero-scene" aria-hidden="true">
+        <div class="snoo-frame">
+          <img class="snoo-art" id="snoo-avatar" data-fallback="snoo.png" alt="" fetchpriority="high" />
+        </div>
+        <div class="preview-board">
+          <div class="preview-grid"></div>
+        </div>
+      </section>
     </main>
-
-    <div class="stat-bottom">
-      <div class="stat-pill">
-        <span class="flame">🔥</span>
-        <span class="stat-text"><strong id="memes-count">872</strong> memes made today</span>
-      </div>
-    </div>
   </div>
 
   <script type="module" src="splash/splash.ts" defer></script>

@@ -1,29 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowDown } from 'lucide-react';
-import { incrementDailyCountOnce } from '../lib/dailyCount';
+import { useRef, useState } from 'react';
 
 const MEME_FILES = [
+    // Top set (ordered)
+    'distracted-boyfriend.jpg',
+    'drake-hotline-bling.jpg',
+    'two-buttons.jpg',
+    'hide-the-pain-harold.jpg',
+    'bernie-i-am-once-again.jpg',
+    'hard-to-swallow-pills.jpg',
+    'laughing-leo.webp',
+    'tiger-vs-daly.jpg',
+    'george-bush.jpg',
+    'anakin-padme.webp',
+    'clown-makeup.jpg',
+    'they-dont-know.jpg',
+    'left-exit-off-ramp2.jpg',
+    'change-my-mind.jpg',
+    'toughest-battles.png',
+    'pablo-escobar-waiting.jpg',
+    'this-is-worthless.jpg',
+    'tried-your-best.jpg',
+    'waiting-skeleton.jpg',
+    'three-headed-dragon.jpg',
+    'this-is-fine.jpg',
+    'urinal-guy.jpg',
+    'toy-story.jpg',
+    'trade-offer.jpg',
+    // Rest (alphabetical by name)
     'am-i-the-only-one.jpg',
     'american-gothic-cat.jpg',
     'ancient-aliens.jpg',
-    'annie.webp',
     'bad-luck-brian.jpg',
-    'batman-slaps-robin.jpg',
-    'bell-curve.jpg',
-    'brace-yourselves.jpg',
-    'bernie-i-am-once-again.jpg',
+    'batman-slapping-robin.jpg',
     'bike-fall.jpg',
     'boardroom-meeting.jpg',
+    'brace-yourselves.jpg',
     'buff-doge-vs-cheems.png',
-    'change-my-mind.jpg',
-    'clown-makeup.jpg',
-    'conspiracy-keanu.jpg',
     'charlie-mail-room.jpg',
-    'distracted-boyfriend.jpg',
-    'doge.jpg',
     'crying-jordan.webp',
+    'doge.jpg',
     'drowning-kid.jpg',
-    'drake-hotline-bling.jpg',
     'epic-handshake.jpg',
     'evill-kermit.jpg',
     'expanding-brain.jpg',
@@ -33,78 +49,60 @@ const MEME_FILES = [
     'futurama-fry.jpg',
     'getting-paid.png',
     'grant-gustin-grave.jpg',
-    'gru-plan.jpg',
     'grim-reaper-doors.webp',
+    'gru-plan.jpg',
     'grumpy-cat.jpg',
-    'hard-to-swallow-pills.jpg',
     'homer-at-bar.jpg',
-    'hide-the-pain-harold.jpg',
     'inhaling-seagull.jpg',
+    'iq-bell-curve.jpg',
     'is-this-a-pigeon.jpg',
-    'is-this-a-pigeon2.jpg',
     'it-always-has-been.jpg',
     'jim-halpert-explains-2.jpg',
-    'laughing-leo.webp',
-    'left-exit-off-ramp2.jpg',
     'leonardo-dicaprio-cheers.jpg',
-    'knife-salesman.jpg',
+    'look-at-me.jpg',
     'megamind-peeking.png',
     'mocking-spongebob-new.jpg',
     'moe-tossing-barney.jpg',
     'monkey-puppet.jpg',
     'most-interesting-man.jpg',
-    'nut-button.jpg',
     'night-king.jpg',
+    'nut-button.jpg',
+    'nvpfua0y5sg41.jpg',
     'one-does-not-simply.jpg',
     'oprah-you-get-a.jpg',
-    'pablo-escobar-waiting.jpg',
-    'pepe-smoking.png',
     'panik-kalm-panik.png',
     'pawn-stars.jpg',
-    'peter-parker-cry.jpg',
     'pbs-meme.jpg',
+    'pepe-smoking.png',
+    'peter-parker-cry.jpg',
+    'philosoraptor.jpg',
     'pinimg-meme.jpg',
     'quiz-kid.jpg',
-    'philosoraptor.jpg',
     'roll-safe-think-about-it.jpg',
     'running-away-balloon.jpg',
-    'nvpfua0y5sg41.jpg',
     'same-picture.jpg',
-    'scumbag-steve.jpg',
     'sleeping-shaq.jpg',
     'soldier-protecting-child.jpg',
     'spider-man.jpg',
+    'spongebob-fire.jpg',
     'spongebob-ight-imma-head-out.jpg',
     'squidward-window.jpg',
     'success-kid.jpg',
     'surprised-pikachu.jpg',
+    'tell-me-more.jpg',
     'that-would-be-great.jpg',
-    'they-dont-know.jpg',
     'thinking-about-other-women.jpg',
-    'this-is-fine.jpg',
-    'tiger-vs-daly.jpg',
-    'three-headed-dragon.jpg',
-    'toughest-battles.png',
-    'toy-story.jpg',
-    'trade-offer.jpg',
     'trophy-case.jpg',
     'tuxedo-winnie-the-pooh.png',
-    'two-buttons.jpg',
-    'unimpressed-seal.jpg',
     'uno-draw-25.jpg',
-    'urinal-guy.jpg',
-    'waiting-skeleton.jpg',
+    'whiteboard-blank.jpg',
     'who-killed-hannibal.jpg',
-    'wondershare-meme.jpg',
     'woman-yelling-cat.jpg',
+    'wondershare-meme.jpg',
     'x-all-the-y.jpg',
     'y-u-no.jpg',
     'yall-got-any-more-of-that.jpg',
-    'look-at-me.jpg',
-    'wad37qky80o61.jpg',
-    'reddit-formats-collection.jpg',
-    'thats-how-you-do-it.jpg',
-    'tried-your-best.jpg',
+    'yoda.jpg',
     'whiteboard-blank.jpg',
 ];
 
@@ -134,23 +132,14 @@ interface GalleryProps {
     onSelect: (src: string) => void;
 }
 
-export function Gallery({ onSelect }: GalleryProps) {
-    const uploadInputRef = useRef<HTMLInputElement>(null);
-    const [dailyCount, setDailyCount] = useState<number | null>(null);
+interface GalleryProps {
+    onSelect: (src: string) => void;
+    templateMode: boolean;
+    onToggleTemplateMode: () => void;
+}
 
-    useEffect(() => {
-        let active = true;
-        incrementDailyCountOnce()
-            .then((count) => {
-                if (active) setDailyCount(count);
-            })
-            .catch(() => {
-                if (active) setDailyCount(null);
-            });
-        return () => {
-            active = false;
-        };
-    }, []);
+export function Gallery({ onSelect, templateMode, onToggleTemplateMode }: GalleryProps) {
+    const uploadInputRef = useRef<HTMLInputElement>(null);
 
     const handleUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -167,25 +156,30 @@ export function Gallery({ onSelect }: GalleryProps) {
     };
 
     return (
-        <div className="h-full w-full bg-[#FDFBF7] overflow-y-auto">
+        <div className="h-full w-full overflow-y-auto bg-gradient-to-b from-[#0e0f13] via-[#0b0b10] to-[#0e0f13]">
             <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-start justify-between mb-4">
                     <div>
-                        <p className="text-xs font-semibold tracking-[0.18em] uppercase text-zinc-400">Templates</p>
-                        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-900">Pick a meme base</h1>
+                        <p className="text-xs font-semibold tracking-[0.18em] uppercase text-orange-400/80">Templates</p>
+                        <h1 className="text-3xl sm:text-[2.4rem] font-black tracking-tight text-white drop-shadow whitespace-nowrap">Pick a meme base</h1>
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white shadow-sm text-sm text-zinc-600">
-                        <span className="text-orange-500">🔥</span>
-                        <span>{dailyCount === null ? '…' : dailyCount} made today</span>
-                    </div>
+                    <button
+                        onClick={onToggleTemplateMode}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border transition ${
+                            templateMode ? 'bg-orange-500/20 border-orange-500/60 text-orange-100' : 'bg-white/5 border-white/15 text-white/70 hover:text-white'
+                        }`}
+                        title="Toggle template creator mode"
+                    >
+                        {templateMode ? 'Template Mode: On' : 'Template Mode: Off'}
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-2 sm:gap-2.5">
                     <button
                         onClick={() => uploadInputRef.current?.click()}
-                        className="group relative overflow-hidden rounded-2xl border-2 border-purple-300/70 bg-gradient-to-br from-purple-50 via-white to-purple-100 hover:border-purple-500 hover:shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500 flex flex-col items-center justify-center min-h-[140px] sm:min-h-[160px] text-purple-700"
+                        className="group relative overflow-hidden rounded-2xl border border-orange-500/60 bg-gradient-to-br from-orange-500 via-orange-400 to-amber-300 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-500/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500 flex flex-col items-center justify-center min-h-[140px] sm:min-h-[160px] text-white font-extrabold"
                     >
-                        <div className="text-lg font-extrabold leading-tight text-center">
+                        <div className="text-lg leading-tight text-center drop-shadow-sm">
                             <div>Upload</div>
                             <div>Your</div>
                             <div>Own</div>
@@ -195,19 +189,16 @@ export function Gallery({ onSelect }: GalleryProps) {
                         <button
                             key={template.src}
                             onClick={() => onSelect(template.src)}
-                            className="group relative overflow-hidden rounded-2xl shadow-sm border border-zinc-200 bg-white hover:shadow-md transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500"
+                            className="group relative overflow-hidden rounded-2xl shadow-sm border border-orange-500/10 bg-[#14141d] hover:border-orange-400/50 hover:shadow-lg hover:shadow-orange-500/20 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500"
                         >
                             <img
                                 src={template.src}
                                 alt={template.name}
                                 className="w-full aspect-[4/5] object-cover transition duration-500 group-hover:scale-105"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition" />
-                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[11px] sm:text-xs font-semibold">
-                                <span>{template.name}</span>
-                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/20 backdrop-blur">
-                                    <ArrowDown className="w-2.5 h-2.5 rotate-180" />
-                                </span>
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition" />
+                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-start text-white text-[10px] sm:text-[11px] font-semibold drop-shadow">
+                                <span className="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm leading-none">{template.name}</span>
                             </div>
                         </button>
                     ))}
