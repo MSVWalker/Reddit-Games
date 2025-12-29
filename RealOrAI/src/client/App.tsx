@@ -143,6 +143,8 @@ export default function App() {
     }
   }, [postState?.kind]);
 
+  const isReviewView = postState?.kind === "hub" && !showModeChoice && activePanel === "review";
+
   useEffect(() => {
     const className = "review-view-body";
     if (isReviewView) {
@@ -443,7 +445,6 @@ export default function App() {
     postState?.kind === "hub"
       ? !showModeChoice && activePanel === "upload"
       : postState?.kind !== "evidence";
-  const isReviewView = postState?.kind === "hub" && !showModeChoice && activePanel === "review";
   const showHeader = showHeaderTitle;
 
   const openPost = (url: string) => {
@@ -777,56 +778,58 @@ export default function App() {
                             />
                           ) : null}
                         </div>
-                        <div className="feed-title">{post.title}</div>
-                        <div className="feed-meta">
-                          <span>{formatDate(post.createdAt)}</span>
-                          <span>{authorLabel}</span>
-                        </div>
-                        <div className="vote-panel" style={{ marginTop: "8px" }}>
-                          {post.userVote ? null : (
-                            <div className="vote-buttons">
-                              {(Object.keys(voteLabels) as VoteChoice[]).map((choice) => (
-                                <button
-                                  key={choice}
-                                  className={`vote-button ${choice}`}
-                                  onClick={() => handleFeedVote(post.id, choice)}
-                                  disabled={!session?.loggedIn || voteBusy === post.id}
-                                >
-                                  {voteLabels[choice]}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <div className="cta-row nav-row">
-                            <button
-                              className="button secondary"
-                              onClick={() => setActiveFeedIndex((index) => Math.max(0, index - 1))}
-                              disabled={clampedIndex === 0}
-                            >
-                              Previous
-                            </button>
-                            <button
-                              className="button secondary"
-                              onClick={() =>
-                                setActiveFeedIndex((index) =>
-                                  Math.min(feed.posts.length - 1, index + 1)
-                                )
-                              }
-                              disabled={clampedIndex >= feed.posts.length - 1}
-                            >
-                              Next
-                            </button>
-                            <button
-                              className="button secondary"
-                              onClick={() => openPost(buildPostUrl(post))}
-                            >
-                              Open post
-                            </button>
+                        <div className="feed-footer">
+                          <div className="feed-title">{post.title}</div>
+                          <div className="feed-meta">
+                            <span>{formatDate(post.createdAt)}</span>
+                            <span>{authorLabel}</span>
                           </div>
-                          {post.userVote ? (
-                            <div className="status">Voted: {voteLabels[post.userVote]}</div>
-                          ) : null}
-                          {post.userVote ? renderResults(post.counts) : null}
+                          <div className="vote-panel" style={{ marginTop: "6px" }}>
+                            {post.userVote ? null : (
+                              <div className="vote-buttons">
+                                {(Object.keys(voteLabels) as VoteChoice[]).map((choice) => (
+                                  <button
+                                    key={choice}
+                                    className={`vote-button ${choice}`}
+                                    onClick={() => handleFeedVote(post.id, choice)}
+                                    disabled={!session?.loggedIn || voteBusy === post.id}
+                                  >
+                                    {voteLabels[choice]}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <div className="cta-row nav-row">
+                              <button
+                                className="button secondary"
+                                onClick={() => setActiveFeedIndex((index) => Math.max(0, index - 1))}
+                                disabled={clampedIndex === 0}
+                              >
+                                Previous
+                              </button>
+                              <button
+                                className="button secondary"
+                                onClick={() =>
+                                  setActiveFeedIndex((index) =>
+                                    Math.min(feed.posts.length - 1, index + 1)
+                                  )
+                                }
+                                disabled={clampedIndex >= feed.posts.length - 1}
+                              >
+                                Next
+                              </button>
+                              <button
+                                className="button secondary"
+                                onClick={() => openPost(buildPostUrl(post))}
+                              >
+                                Open post
+                              </button>
+                            </div>
+                            {post.userVote ? (
+                              <div className="status">Voted: {voteLabels[post.userVote]}</div>
+                            ) : null}
+                            {post.userVote ? renderResults(post.counts) : null}
+                          </div>
                         </div>
                       </div>
                     );

@@ -321,6 +321,11 @@ a:hover {
   min-width: 0;
 }
 
+.review-view .nav-row {
+  width: min(92vw, 900px);
+  margin: 0 auto;
+}
+
 .button {
   border: none;
   padding: 12px 18px;
@@ -398,7 +403,7 @@ a:hover {
 }
 
 .review-view .media-preview.max.square {
-  width: min(92vw, max(240px, calc(100dvh - 240px)));
+  width: min(92vw, calc(100dvh - 200px));
 }
 
 .review-view .media-preview.max.square img,
@@ -434,6 +439,7 @@ a:hover {
 .media-preview video {
   width: 100%;
   display: block;
+  object-fit: contain;
 }
 
 .feed-list {
@@ -450,6 +456,20 @@ a:hover {
   text-align: center;
 }
 
+.review-view .feed-card {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 140px);
+}
+
+.feed-footer {
+  margin-top: auto;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .feed-meta {
   display: flex;
   flex-wrap: wrap;
@@ -459,12 +479,12 @@ a:hover {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  margin: 6px 0 0;
+  margin: 0;
 }
 
 .feed-title {
   font-size: 10px;
-  margin: 4px 0 10px;
+  margin: 0;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -495,7 +515,10 @@ a:hover {
   display: grid;
   place-items: center;
   font-size: 10px;
+  font-weight: 700;
   border-radius: 0;
+  border-width: 2px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
 .vote-button {
@@ -520,6 +543,21 @@ a:hover {
 
 .vote-button.unsure {
   background: rgba(242, 201, 76, 0.18);
+}
+
+.review-view .vote-button.real {
+  background: rgba(46, 194, 126, 0.3);
+  border-color: rgba(46, 194, 126, 0.65);
+}
+
+.review-view .vote-button.ai {
+  background: rgba(255, 107, 107, 0.3);
+  border-color: rgba(255, 107, 107, 0.65);
+}
+
+.review-view .vote-button.unsure {
+  background: rgba(242, 201, 76, 0.32);
+  border-color: rgba(242, 201, 76, 0.65);
 }
 
 .vote-button:hover:not(:disabled) {
@@ -614,8 +652,5 @@ a:hover {
   }
   .vote-buttons {
     grid-template-columns: 1fr;
-  }
-  .review-view .vote-buttons {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
