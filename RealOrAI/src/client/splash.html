@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <link rel="preload" as="image" href="splash-bg.jpg" fetchpriority="high" />
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, height=device-height, user-scalable=0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>RealOrAI</title>
+  <link rel="stylesheet" href="splash/splash.css" />
+</head>
+
+<body class="splash-body">
+  <div class="splash-shell">
+    <div class="splash-bg" aria-hidden="true"></div>
+    <div class="splash-overlay" aria-hidden="true"></div>
+
+    <main class="splash-main">
+      <div class="title-wrap">
+        <h1 class="hero-title">Real or AI?</h1>
+      </div>
+
+      <button class="cta primary start-cta" id="start-button">Get Started</button>
+
+      <section class="mirror-stage" aria-label="Snoovatar mirror">
+        <div class="snoo-card">
+          <img id="snoo-avatar" data-fallback="/snoo-fallback.svg" alt="Your snoovatar" />
+        </div>
+        <div class="snoo-card mirror-card">
+          <img id="snoo-mirror" alt="Your snoovatar mirrored" />
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="splash/splash.ts" defer></script>
+</body>
+
+</html>

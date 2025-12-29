@@ -1,0 +1,51 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "realorai",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "inline": true,
+        "entry": "splash.html"
+      },
+      "game": {
+        "entry": "game.html"
+      }
+    }
+  },
+  "media": {
+    "dir": "assets"
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "media": true,
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "asUser": [
+        "SUBMIT_POST",
+        "SUBMIT_COMMENT"
+      ]
+    }
+  },
+  "dev": {
+    "subreddit": "realorai_dev"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create RealOrAI hub",
+        "description": "Creates a RealOrAI hub post in this subreddit",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/hub-create"
+      }
+    ]
+  },
+  "triggers": {
+    "onAppInstall": "/internal/on-app-install"
+  }
+}

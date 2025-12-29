@@ -1,0 +1,314 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap");
+
+:root {
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --accent: #ff4500;
+  --accent-hi: #ffb14a;
+  --panel: rgba(255, 255, 255, 0.08);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --cta-bounce-peak: -10px;
+  --cta-bounce-after: -4px;
+  --cta-bounce-scale-peak: 1.02;
+  --cta-bounce-scale-after: 1.01;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Manrope", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+.splash-body {
+  background-color: #0c0908;
+  background-image:
+    linear-gradient(180deg, rgba(7, 6, 12, 0.15) 0%, rgba(7, 6, 12, 0.65) 55%, rgba(7, 6, 12, 0.75) 100%),
+    radial-gradient(1200px circle at 50% 18%, rgba(255, 69, 0, 0.24), transparent 55%),
+    radial-gradient(900px circle at 14% 70%, rgba(255, 100, 0, 0.2), transparent 60%);
+  background-size: auto, auto, auto;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: center, center, center;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.splash-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1400px;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 14px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  background: #07060c url("/splash-bg.jpg") center center / contain no-repeat;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.splash-bg::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  background: #07060c;
+  pointer-events: none;
+}
+
+.splash-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1000px circle at 50% 30%, rgba(255, 255, 255, 0.02), transparent 55%),
+    linear-gradient(180deg, rgba(7, 6, 12, 0.12) 0%, rgba(7, 6, 12, 0.4) 55%, rgba(7, 6, 12, 0.32) 100%);
+  z-index: 1;
+}
+
+.splash-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  text-align: center;
+  padding: clamp(28px, 6vh, 52px) 16px 18px;
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.hero-title {
+  font-size: clamp(2.6rem, 7vw, 4.1rem);
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -1px;
+  text-transform: uppercase;
+  text-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
+}
+
+.cta {
+  border: none;
+  padding: 16px 36px;
+  border-radius: 20px;
+  font-weight: 800;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.start-cta {
+  margin-top: 8px;
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, #ff8a00, #ff4500);
+  color: #ffffff;
+  box-shadow:
+    0 30px 70px rgba(255, 69, 0, 0.25),
+    0 22px 55px rgba(0, 0, 0, 0.6);
+  animation: cta-bounce 2.9s ease-in-out infinite;
+  will-change: transform;
+}
+
+.start-cta::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 28px;
+  background: radial-gradient(circle at 50% 60%, rgba(255, 138, 0, 0.5), rgba(255, 69, 0, 0.28), transparent 70%);
+  filter: blur(12px);
+  opacity: 0.75;
+  z-index: -1;
+  transform: scale(0.92);
+  animation: cta-pulse 2.6s ease-in-out infinite;
+}
+
+.start-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 40%);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.start-cta:hover {
+  filter: brightness(1.03);
+  box-shadow:
+    0 34px 85px rgba(255, 69, 0, 0.3),
+    0 26px 70px rgba(0, 0, 0, 0.62);
+}
+
+.start-cta:hover::before {
+  opacity: 0.95;
+}
+
+.start-cta:focus-visible {
+  outline: 3px solid rgba(255, 177, 74, 0.7);
+  outline-offset: 4px;
+}
+
+.mirror-stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+  width: min(560px, 100%);
+}
+
+.snoo-card {
+  width: clamp(150px, 26vw, 210px);
+  height: clamp(190px, 30vw, 250px);
+  border-radius: 26px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transform: rotate(-2deg);
+}
+
+.mirror-card {
+  transform: rotate(2deg);
+}
+
+.snoo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 20px;
+}
+
+.mirror-card img {
+  transform: scaleX(-1);
+}
+
+@keyframes cta-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(var(--cta-bounce-peak)) scale(var(--cta-bounce-scale-peak));
+  }
+  55% {
+    transform: translateY(0) scale(1);
+  }
+  72% {
+    transform: translateY(var(--cta-bounce-after)) scale(var(--cta-bounce-scale-after));
+  }
+  86% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cta-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.02);
+  }
+}
+
+@media (max-width: 720px) {
+  .splash-shell {
+    padding: 10px 10px 18px;
+  }
+
+  .splash-main {
+    padding: 30px 14px 16px;
+    gap: 20px;
+  }
+
+  .start-cta {
+    padding: 14px 28px;
+    font-size: 1.05rem;
+  }
+
+  .mirror-stage {
+    gap: 18px;
+  }
+}
+
+@media (max-height: 700px) {
+  .splash-main {
+    padding-top: 22px;
+    gap: 16px;
+  }
+
+  .snoo-card {
+    width: clamp(140px, 26vw, 190px);
+    height: clamp(170px, 28vw, 220px);
+  }
+}
+
+@media (max-height: 640px) {
+  .hero-title {
+    font-size: clamp(2.1rem, 6.5vw, 3.2rem);
+  }
+
+  .start-cta {
+    padding: 12px 26px;
+    font-size: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --cta-bounce-peak: -4px;
+    --cta-bounce-after: -2px;
+    --cta-bounce-scale-peak: 1.01;
+    --cta-bounce-scale-after: 1.005;
+  }
+
+  .start-cta {
+    animation-duration: 5.2s;
+  }
+
+  .start-cta::before {
+    animation-duration: 4.6s;
+    opacity: 0.65;
+  }
+}
