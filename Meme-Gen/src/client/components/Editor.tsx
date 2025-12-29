@@ -56,6 +56,7 @@ interface TextElement {
     bgColor: string;
     rotation: number;
     align: 'left' | 'center' | 'right';
+    isPlaceholder?: boolean;
 }
 
 interface EmojiElement {
@@ -576,6 +577,7 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
             color: box.color || '#ffffff',
             strokeColor: box.strokeColor || '#000000',
             bgColor: box.bgColor ?? 'transparent',
+            isPlaceholder: !templateMode && Boolean((box.content ?? '').trim()),
         }));
         setElements(textElements);
     }, [image, templateId, templateLayouts, elements]);
@@ -795,7 +797,7 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
         const selectedEl = selectedId ? elements.find((el) => el.id === selectedId) : undefined;
         if (selectedEl) {
             const box = getElementBox(ctx, selectedEl);
-            const handleRadius = 10;
+            const handleRadius = isNarrow ? 16 : 10;
 
             ctx.save();
             ctx.translate(box.cx, box.cy);
@@ -963,7 +965,7 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
             const selectedEl = elements.find((el) => el.id === selectedId);
             if (selectedEl) {
                 const box = getElementBox(ctx, selectedEl);
-                const handleHitRadius = 18;
+                const handleHitRadius = isNarrow ? 28 : 18;
                 const hit = getHandlePoints(box).find(({ point }) => dist2(point, { x, y }) <= handleHitRadius * handleHitRadius);
                 if (hit) {
                     const { sx, sy } = HANDLE_SIGNS[hit.handle];
@@ -1154,11 +1156,11 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
             : undefined;
 
         if (clicked && clicked.type === 'text') {
-            setEditingTextId(clicked.id);
-            // Clear default "DOUBLE TAP" text when editing starts
-            if (clicked.content === 'DOUBLE TAP') {
+            const shouldClear = clicked.isPlaceholder || clicked.content === 'DOUBLE TAP';
+            if (shouldClear) {
                 updateTextContent(clicked.id, '');
             }
+            setEditingTextId(clicked.id);
         }
     };
 
@@ -1254,7 +1256,7 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
         setElements((prev) =>
             prev.map((el) => {
                 if (el.id !== id || el.type !== 'text') return el;
-                const next = { ...el, content, align: 'center' };
+                const next = { ...el, content, align: 'center', isPlaceholder: false };
                 console.debug("[text] update content", { id, length: content.length, wrapWidth: next.wrapWidth, boxHeight: next.boxHeight });
                 return next;
             })
@@ -1405,23 +1407,12 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
     const editingContentHeightPx = editingMetrics ? editingMetrics.contentHeight * scale : 0;
     const editingTextareaHeightPx = editingMetrics ? Math.max(editingMetrics.boxHeight * scale, editingContentHeightPx) : editingContentHeightPx;
     const editingTextareaLeftPx = (() => {
-        if (!editingElement || !image) return 0;
-        const canvasCssWidth = image.width * scale;
-        const margin = 12;
-        const minX = editingTextareaWidthPx / 2 + margin;
-        const maxX = canvasCssWidth - editingTextareaWidthPx / 2 - margin;
-        if (maxX <= minX) return canvasCssWidth / 2;
-        return clamp(editingElement.x * scale, minX, maxX);
+        if (!editingElement) return 0;
+        return editingElement.x * scale;
     })();
     const editingTextareaTopPx = (() => {
-        if (!editingElement || !image) return 0;
-        const canvasCssHeight = image.height * scale;
-        const margin = 12;
-        const totalHeight = editingTextareaHeightPx;
-        const minY = totalHeight / 2 + margin;
-        const maxY = canvasCssHeight - totalHeight / 2 - margin;
-        if (maxY <= minY) return canvasCssHeight / 2;
-        return clamp(editingElement.y * scale, minY, maxY);
+        if (!editingElement) return 0;
+        return editingElement.y * scale;
     })();
     const editingPaddingPx = (() => {
         if (!editingMetrics) return { top: 0, bottom: 0 };
@@ -1985,7 +1976,7 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
             {/* Save Modal */}
             {showSaveModal && previewUrl && (
                 <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in zoom-in-95 duration-200">
-                    <div className="bg-[#09090f] border border-white/5 rounded-3xl px-5 py-6 w-full max-w-md text-left shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative max-h-[90vh] overflow-y-auto">
+                    <div className="bg-[#09090f] border border-white/5 rounded-3xl px-5 py-5 sm:py-6 w-full max-w-md text-left shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative max-h-[90vh] overflow-y-auto">
                         <button
                             onClick={() => setShowSaveModal(false)}
                             className="absolute top-5 right-5 text-white/40 hover:text-white"
@@ -1993,97 +1984,35 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
                             <X className="w-5 h-5" />
                         </button>
 
-                        <div className="space-y-1 pr-8">
-                            <h3 className="text-2xl font-bold text-white">Post meme</h3>
-                            <p className="text-sm text-white/70">
-                                Posting to <span className="font-semibold text-[#ff4500]">{postingSubredditLabel}</span>
-                            </p>
-                        </div>
-
-                        <div className="mt-5 space-y-2">
-                            <input
-                                type="text"
-                                value={postTitle}
-                                onChange={(e) => setPostTitle(e.target.value)}
-                                maxLength={300}
-                                placeholder="Add a title..."
-                                className="w-full h-12 rounded-xl bg-white/5 border border-white/10 px-4 text-base text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
-                            />
-                            {postingHint && <p className="text-xs text-white/50">{postingHint}</p>}
-                        </div>
-
-                        <div className="mt-4 rounded-3xl overflow-hidden border border-white/10 bg-black">
-                            <img src={previewUrl} alt="Meme" className="w-full" />
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                            <div
-                                className={clsx(
-                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
-                                    'bg-white/5 border-white/10'
-                                )}
-                            >
-                                <div className="flex items-center gap-2 text-sm text-white/80">
-                                    <Check className="w-4 h-4 text-green-400" />
-                                    <span>
-                                        <span className="font-semibold">Step 1:</span> Create Meme
-                                    </span>
-                                </div>
-                                <span className="text-xs font-semibold text-green-400">Done</span>
+                        <div className="space-y-4">
+                            <div className="space-y-1 pr-8">
+                                <h3 className="text-2xl font-bold text-white">Post meme</h3>
+                                <p className="text-sm text-white/70">
+                                    Posting to <span className="font-semibold text-[#ff4500]">{postingSubredditLabel}</span>
+                                </p>
                             </div>
 
-                            <div
-                                className={clsx(
-                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
-                                    hasTitle ? 'bg-white/5 border-white/10' : 'bg-white/5 border-[#ff4500]/40'
-                                )}
-                            >
-                                <div className="flex items-center gap-2 text-sm text-white/80">
-                                    {hasTitle ? (
-                                        <Check className="w-4 h-4 text-green-400" />
-                                    ) : (
-                                        <Circle className="w-4 h-4 text-[#ff4500]" />
-                                    )}
-                                    <span>
-                                        <span className="font-semibold">Step 2:</span> Create title
-                                    </span>
-                                </div>
-                                <span className={clsx('text-xs font-semibold', hasTitle ? 'text-green-400' : 'text-[#ff4500]')}>
-                                    {hasTitle ? 'Done' : 'Next'}
-                                </span>
+                            <div className="space-y-2">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-white/50 font-semibold">Title</p>
+                                <input
+                                    type="text"
+                                    value={postTitle}
+                                    onChange={(e) => setPostTitle(e.target.value)}
+                                    maxLength={300}
+                                    placeholder="Add a title to unlock posting..."
+                                    className="w-full h-11 rounded-xl bg-white/5 border border-white/10 px-4 text-base text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
+                                />
+                                {postingHint && <p className="text-xs text-white/50">{postingHint}</p>}
                             </div>
 
-                            <div
-                                className={clsx(
-                                    'flex items-center justify-between rounded-2xl border px-3 py-2',
-                                    postCreated ? 'bg-white/5 border-white/10' : hasTitle ? 'bg-white/5 border-[#ff4500]/30' : 'bg-white/5 border-white/10'
-                                )}
-                            >
-                                <div className="flex items-center gap-2 text-sm text-white/80">
-                                    {postCreated ? (
-                                        <Check className="w-4 h-4 text-green-400" />
-                                    ) : hasTitle ? (
-                                        <Circle className="w-4 h-4 text-[#ff4500]" />
-                                    ) : (
-                                        <Circle className="w-4 h-4 text-white/30" />
-                                    )}
-                                    <span>
-                                        <span className="font-semibold">Step 3:</span> Post to Community
-                                    </span>
+                            <div className="rounded-2xl overflow-hidden border border-white/10 bg-black">
+                                <div className="flex items-center justify-center max-h-44">
+                                    <img src={previewUrl} alt="Meme" className="w-full max-h-44 object-contain" />
                                 </div>
-                                <span
-                                    className={clsx(
-                                        'text-xs font-semibold',
-                                        postCreated ? 'text-green-400' : hasTitle ? 'text-[#ff4500]' : 'text-white/40'
-                                    )}
-                                >
-                                    {postCreated ? 'Done' : hasTitle ? 'Next' : 'Pending'}
-                                </span>
                             </div>
-                        </div>
 
-                        <div className="mt-6 space-y-3">
                             {postError && <p className="text-sm text-red-400">{postError}</p>}
+
                             <button
                                 onClick={() => handlePostToReddit('link')}
                                 disabled={!canPostMeme || actionIsPosting('post-link') || postCompleted}
@@ -2100,9 +2029,10 @@ export function Editor({ templateSrc, onBack, templateMode = false }: EditorProp
                                         ? 'Posting…'
                                         : `Post to ${postingSubredditLabel}`}
                             </button>
+
                             <button
                                 onClick={() => setShowSaveModal(false)}
-                                className="w-full py-3 rounded-2xl bg-transparent border border-white/10 text-sm font-semibold text-white hover:border-white/30 transition-colors"
+                                className="w-full py-2.5 rounded-2xl bg-transparent border border-white/10 text-sm font-semibold text-white hover:border-white/30 transition-colors"
                             >
                                 Discard
                             </button>

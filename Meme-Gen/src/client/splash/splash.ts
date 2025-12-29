@@ -23,6 +23,42 @@ const runIdle = (fn: () => void) => {
   }
 };
 
+const TEMPLATE_PREFETCH_SOURCES = [
+  "/memes/distracted-boyfriend.jpg",
+  "/memes/drake-hotline-bling.jpg",
+  "/memes/expanding-brain.jpg",
+  "/memes/gru-plan.jpg",
+  "/memes/this-is-fine.jpg",
+  "/memes/waiting-skeleton.jpg",
+  "/memes/change-my-mind.jpg",
+  "/memes/two-buttons.jpg",
+  "/memes/is-this-a-pigeon.jpg",
+  "/memes/roll-safe-think-about-it.jpg",
+  "/memes/monkey-puppet.jpg",
+  "/memes/left-exit-off-ramp2.jpg",
+  "/memes/yall-got-any-more-of-that.jpg",
+  "/memes/woman-yelling-cat.jpg",
+  "/memes/one-does-not-simply.jpg",
+  "/memes/surprised-pikachu.jpg",
+  "/memes/uno-draw-25.jpg",
+  "/memes/hide-the-pain-harold.jpg",
+  "/memes/bernie-i-am-once-again.jpg",
+  "/memes/hard-to-swallow-pills.jpg",
+];
+
+const warmedTemplates: HTMLImageElement[] = [];
+
+const warmTemplateCache = () => {
+  const uniqueSources = Array.from(new Set(TEMPLATE_PREFETCH_SOURCES)).slice(0, 20);
+  uniqueSources.forEach((src) => {
+    const img = new Image();
+    img.decoding = "async";
+    (img as any).fetchPriority = "low";
+    img.src = src;
+    warmedTemplates.push(img);
+  });
+};
+
 // Critical path: Snoovatar + hero
 const loadSnoovatar = () => {
   if (!snooAvatarEl) return;
@@ -152,3 +188,4 @@ const buildPreview = () => {
 loadSnoovatar();
 runIdle(buildCollage);
 runIdle(buildPreview);
+runIdle(warmTemplateCache);
