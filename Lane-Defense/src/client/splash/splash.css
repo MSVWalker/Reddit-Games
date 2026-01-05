@@ -1,0 +1,154 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Cormorant+Garamond:wght@400;600&display=swap");
+
+:root {
+  color-scheme: light;
+  --ink: #f7f4ee;
+  --ink-muted: rgba(247, 244, 238, 0.82);
+  --cta: #f7c873;
+  --cta-deep: #e7a94e;
+  --overlay: transparent;
+  --hero-image: url("./ocean-bg2.png");
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Cormorant Garamond", "Cinzel", serif;
+  color: var(--ink);
+  background-color: #111826;
+  background-image: var(--hero-image);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+
+.splash-shell {
+  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+}
+
+.splash-card {
+  width: min(640px, 100%);
+  min-height: 100dvh;
+  padding: min(10vh, 80px) 18px min(16vh, 130px);
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+  border-radius: 24px;
+  background: var(--overlay);
+  box-shadow: none;
+  backdrop-filter: none;
+  grid-template-rows: auto 1fr auto;
+}
+
+.splash-brand {
+  display: grid;
+  gap: 6px;
+}
+
+.splash-title {
+  font-family: "Cinzel", "Cormorant Garamond", serif;
+  font-size: clamp(3.8rem, 14.4vw, 5.8rem);
+  letter-spacing: 0.12em;
+  margin: 0;
+  line-height: 0.95;
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.splash-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  text-transform: lowercase;
+  color: var(--ink-muted);
+}
+
+.splash-cta {
+  grid-row: 3;
+  font-family: "Cinzel", "Cormorant Garamond", serif;
+  font-size: 1rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: 1px solid rgba(200, 185, 255, 0.8);
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(196, 214, 255, 0.6), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(132, 152, 255, 0.65), transparent 60%),
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 18px),
+    repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.2) 0 2px, transparent 2px 20px),
+    linear-gradient(135deg, #6b5cff, #4a6edb 45%, #7a5fd6 100%);
+  color: #f7f4ff;
+  padding: 12px 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+  animation: bounce 1.6s ease-in-out infinite;
+  margin-top: -26px;
+}
+
+.splash-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, rgba(216, 226, 255, 0.7), transparent);
+  transform: translateX(-120%);
+  animation: shimmer 5s linear infinite;
+}
+
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 36px rgba(0, 0, 0, 0.55);
+  }
+}
+
+@media (max-height: 680px) {
+  .splash-shell {
+    padding-top: 0;
+  }
+
+  .splash-card {
+    padding: min(8vh, 60px) 16px min(14vh, 110px);
+    gap: 12px;
+  }
+
+  .splash-title {
+    font-size: clamp(2.7rem, 12.5vw, 4.2rem);
+  }
+
+  .splash-cta {
+    padding: 10px 22px;
+  }
+}
+
+@media (max-width: 520px) {
+  :root {
+    --hero-image: url("./ocean-bg5-mobile.png");
+  }
+}

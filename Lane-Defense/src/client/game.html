@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Lane Defense</title>
+</head>
+
+<body class="lane-defense">
+  <div class="game-shell">
+    <header class="top-bar">
+      <div class="stats-row">
+        <div class="stat-chip"><span class="icon">$</span><span id="gold-value">0</span></div>
+        <div class="stat-chip"><span class="icon">HP</span><span id="lives-value">0</span></div>
+        <div class="stat-chip"><span class="icon">W</span><span id="wave-value">1</span></div>
+        <div class="stat-chip"><span class="icon">T</span><span id="timer-value">--</span></div>
+      </div>
+      <select class="menu-select" id="menu-select" aria-label="Game menu">
+        <option value="" selected>Menu</option>
+        <option value="restart">Restart</option>
+        <option value="toggle-path">Toggle Path Panel</option>
+      </select>
+    </header>
+
+    <div class="scene">
+      <canvas id="game-canvas" aria-label="Battlefield"></canvas>
+      <div class="scene-overlay">
+        <div class="path-panel" id="path-panel">
+          <div><span>Path Length:</span><strong id="path-length">--</strong></div>
+          <div><span>Number of Towers:</span><strong id="tower-count">0</strong></div>
+          <div><span>Sum DPS:</span><strong id="dps-sum">0</strong></div>
+          <div><span>Bank Income:</span><strong id="bank-income">0</strong></div>
+        </div>
+        <div class="toast" id="toast"></div>
+      </div>
+      <div class="action-controls" id="action-controls" aria-hidden="true"></div>
+    </div>
+
+    <div class="action-tray" id="action-tray" aria-hidden="true"></div>
+
+    <nav class="build-bar" id="build-bar"></nav>
+  </div>
+
+  <div class="modal" id="end-modal" aria-hidden="true">
+    <div class="modal-card">
+      <h2 id="end-title">Victory</h2>
+      <p id="end-summary"></p>
+      <div class="modal-actions">
+        <button class="hud-btn primary" id="play-again">Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="game/game.ts" defer></script>
+</body>
+
+</html>
