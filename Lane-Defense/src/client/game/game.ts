@@ -195,6 +195,19 @@ const getTower = (id: string): TowerDefinition => {
   return buildTowerById[id];
 };
 
+const DAMAGE_MULTIPLIERS = [1, 1.4, 2.1, 2.5, 3.0];
+
+const getScaledDamage = (towerDef: TowerDefinition, tierIndex: number) => {
+  const base = towerDef.tiers[0].damage;
+  const multiplier = DAMAGE_MULTIPLIERS[Math.min(tierIndex, DAMAGE_MULTIPLIERS.length - 1)];
+  return Math.round(base * multiplier);
+};
+
+const getScaledRange = (towerDef: TowerDefinition, tierIndex: number) => {
+  const base = towerDef.tiers[0].range;
+  return Number((base * Math.pow(1.1, tierIndex)).toFixed(2));
+};
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const tileIndex = (x: number, y: number, width: number) => y * width + x;
@@ -578,15 +591,14 @@ const applySlow = (creep: CreepInstance, multiplier: number, duration: number) =
   const def = CREEP_DEFS[creep.typeId];
   if (def.slowImmune) return;
 
-  if (creep.slowTimer <= 0 || multiplier < creep.slowMultiplier) {
+  if (creep.slowTimer <= 0) {
     creep.slowMultiplier = multiplier;
     creep.slowTimer = duration;
     return;
   }
 
-  if (multiplier == creep.slowMultiplier) {
-    creep.slowTimer = duration;
-  }
+  creep.slowMultiplier = Math.min(creep.slowMultiplier, multiplier);
+  creep.slowTimer = Math.max(creep.slowTimer, duration);
 };
 
 const getDistanceRemaining = (creep: CreepInstance, runtime: Runtime): number => {
@@ -601,8 +613,8 @@ const getDistanceRemaining = (creep: CreepInstance, runtime: Runtime): number =>
 
 const getTowerTargets = (tower: TowerInstance, state: GameState, runtime: Runtime): CreepInstance[] => {
   const def = getTower(tower.towerId);
-  const tier = def.tiers[tower.tier];
-  const rangeSq = tier.range * tier.range;
+  const range = getScaledRange(def, tower.tier);
+  const rangeSq = range * range;
 
   const groundTargets: CreepInstance[] = [];
   const airTargets: CreepInstance[] = [];
@@ -669,6 +681,7 @@ const pickTarget = (tower: TowerInstance, candidates: CreepInstance[], state: Ga
 const fireTower = (tower: TowerInstance, state: GameState, runtime: Runtime) => {
   const def = getTower(tower.towerId);
   const tier = def.tiers[tower.tier];
+  const scaledDamage = getScaledDamage(def, tower.tier);
   const candidates = getTowerTargets(tower, state, runtime);
   const target = pickTarget(tower, candidates, state, runtime);
   if (!target) return;
@@ -680,15 +693,26 @@ const fireTower = (tower: TowerInstance, state: GameState, runtime: Runtime) => 
       const dx = creep.x - target.x;
       const dy = creep.y - target.y;
       if (dx * dx + dy * dy <= splashSq) {
-        totalDamage += applyDamage(creep, tier.damage, def.damageType);
+        totalDamage += applyDamage(creep, scaledDamage, def.damageType);
       }
     }
   } else {
-    totalDamage += applyDamage(target, tier.damage, def.damageType);
+    totalDamage += applyDamage(target, scaledDamage, def.damageType);
   }
 
   if (tier.slow) {
-    applySlow(target, tier.slow.multiplier, tier.slow.duration);
+    if (tier.slowSplashRadius) {
+      const slowSq = tier.slowSplashRadius * tier.slowSplashRadius;
+      for (const creep of candidates) {
+        const dx = creep.x - target.x;
+        const dy = creep.y - target.y;
+        if (dx * dx + dy * dy <= slowSq) {
+          applySlow(creep, tier.slow.multiplier, tier.slow.duration);
+        }
+      }
+    } else {
+      applySlow(target, tier.slow.multiplier, tier.slow.duration);
+    }
   }
 
   const ttlMax = getShotTtl(def.id);
@@ -711,6 +735,8 @@ const fireTower = (tower: TowerInstance, state: GameState, runtime: Runtime) => 
 const updateTowers = (state: GameState, runtime: Runtime, dt: number) => {
   for (const structure of state.structures) {
     if (structure.kind != "tower") continue;
+    const def = getTower(structure.towerId);
+    if (!def.canHitGround && !def.canHitAir) continue;
     structure.recoil = Math.max(0, structure.recoil - dt * 6);
     structure.cooldown = Math.max(0, structure.cooldown - dt);
     if (structure.cooldown <= 0) {
@@ -1331,11 +1357,11 @@ const createGridLines = (width: number, height: number) => {
     transparent: true,
     opacity: 0.38,
   });
-  material.depthTest = false;
+  material.depthTest = true;
   material.depthWrite = false;
 
   const lines = new THREE.LineSegments(geometry, material);
-  lines.renderOrder = 3;
+  lines.renderOrder = 1;
   lines.frustumCulled = false;
   return lines;
 };
@@ -1393,18 +1419,18 @@ const createExitMarker = (visuals: VisualPack) => {
 const getTowerAccent = (towerId: string) => {
   switch (towerId) {
     case "splash":
-      return new THREE.Color(0xf08a42);
+      return new THREE.Color(0xd34b3a);
     case "cannon":
       return new THREE.Color(0xa7a6a2);
     case "slow":
-      return new THREE.Color(0x6fb4f2);
+      return new THREE.Color(0x4e8dd6);
     case "long":
-      return new THREE.Color(0xb9c7a6);
-    case "rapid":
-      return new THREE.Color(0xd1b07e);
+      return new THREE.Color(0x7a7f87);
+    case "wall":
+      return new THREE.Color(0x8a8f98);
     case "basic":
     default:
-      return new THREE.Color(0xc9a86a);
+      return new THREE.Color(0x7a4d2b);
   }
 };
 
@@ -1475,6 +1501,18 @@ const buildTowerMesh = (tower: TowerInstance) => {
     roughness: 0.35,
     metalness: 0.6,
   });
+  if (tower.towerId == "splash") {
+    accentMat.emissiveIntensity = 0.9;
+    accentMat.roughness = 0.18;
+    accentMat.metalness = 0.65;
+    trimMat.emissiveIntensity = 0.5;
+  }
+  if (tower.towerId == "slow") {
+    accentMat.emissiveIntensity = 0.75;
+    accentMat.roughness = 0.16;
+    accentMat.metalness = 0.25;
+    trimMat.emissiveIntensity = 0.35;
+  }
 
   const raft = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.1, 0.92), materials.wood);
   raft.position.y = 0.05;
@@ -1488,10 +1526,31 @@ const buildTowerMesh = (tower: TowerInstance) => {
   deck.position.y = 0.17;
   group.add(deck);
 
-  const trimRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 12, 26), materials.bronze);
+  const trimRingMaterial = tower.towerId == "splash" ? accentMat : materials.bronze;
+  const trimRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 12, 26), trimRingMaterial);
   trimRing.rotation.x = Math.PI / 2;
   trimRing.position.y = 0.19;
   group.add(trimRing);
+
+  if (tower.towerId == "wall") {
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.52, 0.28, 14), materials.stoneDark);
+    base.position.y = 0.2;
+    group.add(base);
+
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 0), materials.stone);
+    rock.position.y = 0.42;
+    rock.rotation.set(0.2, 0.6, 0.1);
+    group.add(rock);
+
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.08, 0.58), materials.stoneDark);
+    slab.position.y = 0.58;
+    slab.rotation.y = 0.25;
+    group.add(slab);
+
+    group.userData = { kind: "tower", towerId: tower.towerId, tier: tower.tier };
+    applyShadows(group);
+    return group;
+  }
 
   const turret = new THREE.Group();
   turret.position.y = 0.46;
@@ -1499,13 +1558,17 @@ const buildTowerMesh = (tower: TowerInstance) => {
   turret.add(recoilGroup);
   group.add(turret);
   let muzzleOffsets: Array<{ x: number; y: number; z: number }> = [];
+  let flameCore: THREE.Mesh | null = null;
+  let flameShell: THREE.Mesh | null = null;
+  let frostCore: THREE.Mesh | null = null;
+  let frostHalo: THREE.Mesh | null = null;
 
   if (tower.towerId == "splash") {
-    const basePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.12, 14), materials.bronze);
+    const basePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.12, 14), accentMat);
     basePlate.position.y = 0.22;
     recoilGroup.add(basePlate);
 
-    const tankLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.28, 12), materials.iron);
+    const tankLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.28, 12), trimMat);
     tankLeft.position.set(-0.18, 0.26, -0.04);
     recoilGroup.add(tankLeft);
 
@@ -1513,11 +1576,11 @@ const buildTowerMesh = (tower: TowerInstance) => {
     tankRight.position.x = 0.18;
     recoilGroup.add(tankRight);
 
-    const nozzleBase = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.2), materials.iron);
+    const nozzleBase = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.2), accentMat);
     nozzleBase.position.set(0, 0.26, 0.12);
     recoilGroup.add(nozzleBase);
 
-    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.38, 12), materials.iron);
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.38, 12), accentMat);
     nozzle.rotation.x = Math.PI / 2.4;
     nozzle.position.set(0, 0.28, 0.36);
     recoilGroup.add(nozzle);
@@ -1527,10 +1590,26 @@ const buildTowerMesh = (tower: TowerInstance) => {
     nozzleTip.position.set(0, 0.28, 0.54);
     recoilGroup.add(nozzleTip);
 
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.24, 8), materials.bronze);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.24, 8), trimMat);
     pipe.rotation.x = Math.PI / 2;
     pipe.position.set(0, 0.22, 0.05);
     recoilGroup.add(pipe);
+
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xff3b2f,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    flameCore = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), flameMat);
+    flameCore.position.set(0, 0.42, 0.58);
+    recoilGroup.add(flameCore);
+
+    flameShell = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 12), flameMat);
+    flameShell.position.set(0, 0.46, 0.64);
+    flameShell.rotation.x = Math.PI;
+    recoilGroup.add(flameShell);
 
     muzzleOffsets = [{ x: 0, y: 0.3, z: 0.64 }];
   } else if (tower.towerId == "cannon") {
@@ -1563,23 +1642,73 @@ const buildTowerMesh = (tower: TowerInstance) => {
     basePlate.position.y = 0.24;
     recoilGroup.add(basePlate);
 
+    const snowMat = new THREE.MeshStandardMaterial({
+      color: 0xf2f7ff,
+      emissive: new THREE.Color(0x9ed7ff),
+      emissiveIntensity: 0.35,
+      roughness: 0.5,
+      metalness: 0.05,
+    });
+    const snowCap = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.06, 12), snowMat);
+    snowCap.position.y = 0.34;
+    recoilGroup.add(snowCap);
+
+    const snowPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.04, 12), snowMat);
+    snowPlate.position.y = 0.22;
+    recoilGroup.add(snowPlate);
+
     const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.26, 12), accentMat);
     nozzle.rotation.x = Math.PI / 2.3;
     nozzle.position.set(0, 0.36, 0.22);
     recoilGroup.add(nozzle);
 
-    const crystal = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 1), accentMat);
+    const crystal = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), accentMat);
     crystal.position.y = 0.62;
     recoilGroup.add(crystal);
+
+    const spikeLeft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), accentMat);
+    spikeLeft.position.set(-0.16, 0.44, 0.1);
+    spikeLeft.rotation.x = Math.PI / 2.1;
+    recoilGroup.add(spikeLeft);
+
+    const spikeRight = spikeLeft.clone();
+    spikeRight.position.x = 0.16;
+    recoilGroup.add(spikeRight);
 
     const halo = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.028, 12, 24), trimMat);
     halo.rotation.x = Math.PI / 2;
     halo.position.y = 0.5;
     recoilGroup.add(halo);
 
+    const shardPositions = [
+      { x: -0.18, y: 0.26, z: -0.12 },
+      { x: 0.18, y: 0.26, z: -0.12 },
+      { x: 0, y: 0.26, z: 0.18 },
+    ];
+    for (const pos of shardPositions) {
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 8), accentMat);
+      shard.position.set(pos.x, pos.y, pos.z);
+      shard.rotation.x = Math.PI / 2.2;
+      recoilGroup.add(shard);
+    }
+
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: 0x9fd7ff,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    frostHalo = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.24, 24), auraMat);
+    frostHalo.rotation.x = -Math.PI / 2;
+    frostHalo.position.y = 0.26;
+    recoilGroup.add(frostHalo);
+
+    frostCore = crystal;
+
     muzzleOffsets = [{ x: 0, y: 0.38, z: 0.48 }];
   } else if (tower.towerId == "long") {
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.4), materials.wood);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.4), materials.stoneDark);
     frame.position.set(0, 0.22, -0.02);
     recoilGroup.add(frame);
 
@@ -1713,7 +1842,18 @@ const buildTowerMesh = (tower: TowerInstance) => {
   const scale = 1 + tower.tier * 0.08;
   group.scale.setScalar(scale);
 
-  group.userData = { kind: "tower", towerId: tower.towerId, tier: tower.tier, turret, recoilGroup, muzzle };
+  group.userData = {
+    kind: "tower",
+    towerId: tower.towerId,
+    tier: tower.tier,
+    turret,
+    recoilGroup,
+    muzzle,
+    flameCore,
+    flameShell,
+    frostCore,
+    frostHalo,
+  };
   applyShadows(group);
   muzzle.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -1948,23 +2088,43 @@ const buildCreepMesh = (creep: CreepInstance) => {
   group.add(bowFoam);
 
   const healthGroup = new THREE.Group();
-  const barWidth = 0.42;
-  const barHeight = 0.05;
-  const bgMat = new THREE.MeshBasicMaterial({ color: 0x13233d, transparent: true, opacity: 0.8 });
+  const barWidth = 0.5;
+  const barHeight = 0.07;
+  const bgMat = new THREE.MeshBasicMaterial({ color: 0x0a1e33, transparent: true, opacity: 0.92 });
   bgMat.depthTest = false;
-  const fillMat = new THREE.MeshBasicMaterial({ color: 0x61d66b, transparent: true, opacity: 0.9 });
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0x6bff7b, transparent: true, opacity: 0.98 });
   fillMat.depthTest = false;
   const bg = new THREE.Mesh(new THREE.PlaneGeometry(barWidth, barHeight), bgMat);
   const fill = new THREE.Mesh(new THREE.PlaneGeometry(barWidth, barHeight), fillMat);
+  const borderMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+  borderMat.depthTest = false;
+  const border = new THREE.Mesh(new THREE.PlaneGeometry(barWidth + 0.02, barHeight + 0.02), borderMat);
+  border.position.z = -0.002;
   bg.castShadow = false;
   bg.receiveShadow = false;
   fill.castShadow = false;
   fill.receiveShadow = false;
   fill.position.x = -barWidth * 0.25;
-  healthGroup.add(bg, fill);
-  healthGroup.position.set(0, 0.55, 0);
+  healthGroup.add(border, bg, fill);
+  healthGroup.position.set(0, 0.6, 0);
   healthGroup.renderOrder = 5;
   group.add(healthGroup);
+
+  const slowAuraMat = new THREE.MeshBasicMaterial({
+    color: 0x7bdcff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  slowAuraMat.depthTest = false;
+  const auraRadius = Math.max(size.width, size.length) * 0.6;
+  const slowAura = new THREE.Mesh(new THREE.RingGeometry(auraRadius * 0.6, auraRadius * 0.9, 32), slowAuraMat);
+  slowAura.rotation.x = -Math.PI / 2;
+  slowAura.position.y = 0.03;
+  slowAura.visible = false;
+  slowAura.renderOrder = 6;
+  group.add(slowAura);
 
   const scale = def.isBoss ? 1.35 : creep.typeId === "sprinter" ? 0.9 : 1;
   group.scale.setScalar(scale);
@@ -1978,6 +2138,7 @@ const buildCreepMesh = (creep: CreepInstance) => {
     healthGroup,
     healthFill: fill,
     healthBarWidth: barWidth,
+    slowAura,
     lastPos: new THREE.Vector3(creep.x, 0, creep.y),
   };
   applyShadows(group);
@@ -2009,19 +2170,24 @@ const buildShotMesh = (towerId: string, color: string) => {
   });
 
   if (towerId === "splash") {
-    const flameCore = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.28, 10), glowMat);
-    flameCore.position.y = 0.12;
+    const flameCore = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), glowMat);
+    flameCore.position.y = 0.1;
     group.add(flameCore);
 
-    const flameShell = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.36, 10), glowMat);
-    flameShell.position.y = 0.08;
+    const flameShell = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), glowMat);
+    flameShell.position.y = 0.1;
     group.add(flameShell);
 
-    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glowMat);
-    ember.position.y = -0.1;
+    const ember = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 8), glowMat);
+    ember.position.y = -0.14;
+    ember.rotation.x = Math.PI;
     group.add(ember);
 
-    group.userData = { flameCore, flameShell };
+    const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.12, 0.3, 10), glowMat);
+    trail.position.y = -0.26;
+    group.add(trail);
+
+    group.userData = { flameCore, flameShell, trail };
     return group;
   }
 
@@ -2236,6 +2402,29 @@ const syncStructures = (runtime: Runtime, state: GameState, timeSec: number) => 
         recoilGroup.position.z = -0.08 * structure.recoil;
       }
       setMuzzleIntensity(muzzle, structure.recoil);
+
+      const flameCore = mesh.userData?.flameCore as THREE.Mesh | null | undefined;
+      const flameShell = mesh.userData?.flameShell as THREE.Mesh | null | undefined;
+      if (flameCore && flameShell) {
+        const flicker = 0.9 + Math.sin(timeSec * 6 + structure.id) * 0.18;
+        flameCore.scale.setScalar(flicker);
+        flameShell.scale.setScalar(0.95 + Math.cos(timeSec * 7 + structure.id) * 0.2);
+        flameShell.rotation.z = Math.sin(timeSec * 5 + structure.id) * 0.25;
+        if (flameCore.material instanceof THREE.MeshBasicMaterial) {
+          flameCore.material.opacity = 0.65 + Math.sin(timeSec * 8 + structure.id) * 0.15;
+        }
+      }
+
+      const frostCore = mesh.userData?.frostCore as THREE.Mesh | null | undefined;
+      const frostHalo = mesh.userData?.frostHalo as THREE.Mesh | null | undefined;
+      if (frostCore && frostHalo) {
+        const pulse = 0.95 + Math.sin(timeSec * 4 + structure.id) * 0.1;
+        frostCore.scale.setScalar(pulse);
+        frostHalo.scale.setScalar(0.9 + Math.sin(timeSec * 3 + structure.id) * 0.12);
+        if (frostHalo.material instanceof THREE.MeshBasicMaterial) {
+          frostHalo.material.opacity = 0.25 + Math.sin(timeSec * 5 + structure.id) * 0.1;
+        }
+      }
     }
   }
 
@@ -2303,6 +2492,18 @@ const syncCreeps = (runtime: Runtime, state: GameState, timeSec: number) => {
           wake.material.opacity = 0.18 + Math.sin(timeSec * 4.2 + creep.id + i) * 0.06;
         }
         wake.scale.z = 0.9 + Math.sin(timeSec * 3 + creep.id + i) * 0.1;
+      }
+    }
+
+    const slowAura = mesh.userData?.slowAura as THREE.Mesh | undefined;
+    if (slowAura && slowAura.material instanceof THREE.MeshBasicMaterial) {
+      if (creep.slowTimer > 0) {
+        slowAura.visible = true;
+        const pulse = 0.92 + Math.sin(timeSec * 5.5 + creep.id) * 0.08;
+        slowAura.scale.set(pulse, pulse, pulse);
+        slowAura.material.opacity = 0.18 + Math.sin(timeSec * 7.2 + creep.id) * 0.08;
+      } else {
+        slowAura.visible = false;
       }
     }
 
@@ -2385,13 +2586,13 @@ const syncShots = (runtime: Runtime, state: GameState, timeSec: number) => {
 
     if (flameCore && flameCore.material instanceof THREE.MeshBasicMaterial) {
       flameCore.material.opacity = 0.45 + 0.5 * alpha;
-      flameCore.scale.set(1, 0.8 + Math.sin(timeSec * 18 + i) * 0.3, 1);
-      flameCore.rotation.z = Math.sin(timeSec * 14 + i) * 0.25;
+      const pulse = 0.9 + Math.sin(timeSec * 18 + i) * 0.18;
+      flameCore.scale.setScalar(pulse);
     }
     if (flameShell && flameShell.material instanceof THREE.MeshBasicMaterial) {
       flameShell.material.opacity = 0.25 + 0.4 * alpha;
-      flameShell.scale.set(1, 0.9 + Math.sin(timeSec * 12 + i) * 0.25, 1);
-      flameShell.rotation.z = Math.cos(timeSec * 12 + i) * 0.2;
+      const shellPulse = 1 + Math.cos(timeSec * 12 + i) * 0.2;
+      flameShell.scale.setScalar(shellPulse);
     }
     if (trail && trail.material instanceof THREE.MeshBasicMaterial) {
       trail.material.opacity = 0.25 + 0.45 * alpha;
@@ -2443,7 +2644,7 @@ const syncSelection = (runtime: Runtime, selection: Structure | null, timeSec: n
       outline.material.opacity = 0.85;
     }
 
-    const range = getTower(selection.towerId).tiers[selection.tier].range;
+    const range = getScaledRange(getTower(selection.towerId), selection.tier);
     rangeRing.visible = true;
     rangeRing.position.set(selection.x + 0.5, 0.04, selection.y + 0.5);
     rangeRing.scale.set(range, range, range);
@@ -2467,6 +2668,13 @@ const render = (runtime: Runtime, state: GameState, selection: Structure | null,
   syncShots(runtime, state, timeSec);
   syncSelection(runtime, selection, timeSec);
   runtime.view.renderer.render(runtime.view.scene, runtime.view.camera);
+};
+
+const updateNextRoundButton = (state: GameState) => {
+  if (!nextRoundButton) return;
+  const visible = hasRendered && showNextRound && state.phase == "prep";
+  nextRoundButton.classList.toggle("hidden", !visible);
+  nextRoundButton.disabled = !visible;
 };
 
 const updateHud = (state: GameState, runtime: Runtime) => {
@@ -2496,7 +2704,8 @@ const updateHud = (state: GameState, runtime: Runtime) => {
       if (structure.kind != "tower") return sum;
       const def = getTower(structure.towerId);
       const tier = def.tiers[structure.tier];
-      return sum + tier.damage * tier.rate;
+      const scaledDamage = getScaledDamage(def, structure.tier);
+      return sum + scaledDamage * tier.rate;
     }, 0);
     const text = Number.isInteger(totalDps) ? `${totalDps}` : totalDps.toFixed(1);
     dpsEl.textContent = text;
@@ -2505,6 +2714,8 @@ const updateHud = (state: GameState, runtime: Runtime) => {
     const bankCount = state.structures.filter((structure) => structure.kind == "bank").length;
     bankEl.textContent = `${bankCount * BANK_DEFINITION.income}`;
   }
+
+  updateNextRoundButton(state);
 };
 
 const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
@@ -2513,13 +2724,16 @@ const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
 
   bar.innerHTML = "";
   const options = [
-    ...TOWER_DEFS.map((tower) => ({
-      id: tower.id,
-      label: tower.name,
-      cost: tower.tiers[0].cost,
-      color: tower.color,
-      kind: "tower" as const,
-    })),
+    ...["wall", "basic"].map((towerId) => {
+      const tower = getTower(towerId);
+      return {
+        id: tower.id,
+        label: tower.name,
+        cost: tower.tiers[0].cost,
+        color: tower.color,
+        kind: "tower" as const,
+      };
+    }),
     {
       id: BANK_DEFINITION.id,
       label: BANK_DEFINITION.name,
@@ -2527,6 +2741,16 @@ const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
       color: BANK_DEFINITION.color,
       kind: "bank" as const,
     },
+    ...["long", "splash", "slow"].map((towerId) => {
+      const tower = getTower(towerId);
+      return {
+        id: tower.id,
+        label: tower.name,
+        cost: tower.tiers[0].cost,
+        color: tower.color,
+        kind: "tower" as const,
+      };
+    }),
   ];
 
   for (const option of options) {
@@ -2626,9 +2850,11 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
     return Number.isInteger(value) ? `${value}` : value.toFixed(1);
   };
 
-  const towerSpecial = (towerId: string) => {
+  const towerSpecial = (towerId: string, tierIndex = 0) => {
     if (towerId === "splash") return "Splash";
-    if (towerId === "slow") return "Slow";
+    if (towerId === "slow") return tierIndex > 0 ? "Slow Splash" : "Slow";
+    if (towerId === "long") return "Far Range";
+    if (towerId === "wall") return "Blocker";
     return "None";
   };
 
@@ -2647,17 +2873,19 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
     } else {
       const towerDef = getTower(selected.towerId);
       const tier = towerDef.tiers[selected.tier];
+      const scaledDamage = getScaledDamage(towerDef, selected.tier);
       name.textContent = "";
-      addStat("DPS", formatDps(tier.damage, tier.rate));
-      addStat("Special", towerSpecial(towerDef.id));
+      addStat("DPS", formatDps(scaledDamage, tier.rate));
+      addStat("Special", towerSpecial(towerDef.id, selected.tier));
       addStat("Last Round DMG", formatDamage(selected.lastRoundDamage));
     }
   } else if (buildSelection.kind == "tower") {
     const towerDef = getTower(buildSelection.towerId);
     const tier = towerDef.tiers[0];
+    const scaledDamage = getScaledDamage(towerDef, 0);
     name.textContent = "";
-    addStat("DPS", formatDps(tier.damage, tier.rate));
-    addStat("Special", towerSpecial(towerDef.id));
+    addStat("DPS", formatDps(scaledDamage, tier.rate));
+    addStat("Special", towerSpecial(towerDef.id, 0));
   } else if (buildSelection.kind == "bank") {
     name.textContent = "";
     addStat("DPS", "—");
@@ -2795,6 +3023,9 @@ let activeSelection: Structure | null = null;
 let activeBuildSelection: BuildSelection = { kind: "none" };
 let actionTrayKey = "";
 let showPathPanel = true;
+let nextRoundButton: HTMLButtonElement | null = null;
+let showNextRound = true;
+let hasRendered = false;
 
 const setupInteraction = () => {
   const canvas = runtime.view.canvas;
@@ -2966,15 +3197,28 @@ const setupInteraction = () => {
   const playAgainButton = document.getElementById("play-again") as HTMLButtonElement | null;
   const menuSelect = document.getElementById("menu-select") as HTMLSelectElement | null;
   const pathPanel = document.getElementById("path-panel");
+  nextRoundButton = document.getElementById("next-round") as HTMLButtonElement | null;
 
   const updatePathPanelVisibility = () => {
     if (!pathPanel) return;
     pathPanel.style.display = showPathPanel ? "grid" : "none";
   };
 
+  const startNextRound = () => {
+    if (state.phase != "prep") return;
+    buildSpawnQueue(state);
+    state.phase = "wave";
+    state.phaseTimer = 0;
+  };
+
   playAgainButton?.addEventListener("click", () => {
     hideEndModal();
     initGame(state.seed);
+  });
+
+  nextRoundButton?.addEventListener("click", () => {
+    startNextRound();
+    updateNextRoundButton(state);
   });
 
   menuSelect?.addEventListener("change", () => {
@@ -2987,9 +3231,15 @@ const setupInteraction = () => {
       updatePathPanelVisibility();
       menuSelect.value = "";
     }
+    if (menuSelect.value == "toggle-next") {
+      showNextRound = !showNextRound;
+      updateNextRoundButton(state);
+      menuSelect.value = "";
+    }
   });
 
   updatePathPanelVisibility();
+  updateNextRoundButton(state);
 
 };
 
@@ -3025,6 +3275,10 @@ const animate = (timestamp: number) => {
     lastTime = timestamp;
   }
   render(runtime, state, activeSelection, timestamp / 1000);
+  if (!hasRendered) {
+    hasRendered = true;
+    updateNextRoundButton(state);
+  }
   window.requestAnimationFrame(animate);
 };
 
