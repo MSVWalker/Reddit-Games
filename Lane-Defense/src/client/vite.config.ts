@@ -10,6 +10,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         splash: "splash.html",
+        training: "training.html",
         game: "game.html",
       },
       output: {

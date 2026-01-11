@@ -8,6 +8,9 @@
         "inline": true,
         "entry": "splash.html"
       },
+      "training": {
+        "entry": "training.html"
+      },
       "game": {
         "entry": "game.html"
       }
@@ -23,7 +26,8 @@
   "permissions": {
     "redis": true,
     "reddit": {
-      "enable": true
+      "enable": true,
+      "asUser": ["SUBMIT_COMMENT"]
     }
   },
   "dev": {

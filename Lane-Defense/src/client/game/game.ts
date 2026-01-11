@@ -15,19 +15,31 @@ import {
   type DamageType,
 } from "../../shared/game-data";
 import { nextRng, type RngState } from "../../shared/rng";
-import type { DailyResponse, SubmitScoreRequest, SubmitScoreResponse } from "../../shared/types/api";
+import type {
+  DailyResponse,
+  DailyChallengeClaimResponse,
+  DailyChallengeLeaderboardResponse,
+  DailyChallengeStatusResponse,
+  GridPoint,
+  LeaderboardResponse,
+  SubmitFeedbackRequest,
+  SubmitFeedbackResponse,
+  SubmitScoreRequest,
+  SubmitScoreResponse,
+} from "../../shared/types/api";
+import { emitEffect } from "@devvit/shared-types/client/emit-effect";
+import { ConsentStatus } from "@devvit/protos/json/reddit/devvit/app_permission/v1/app_permission.js";
+import { EffectType } from "@devvit/protos/json/devvit/ui/effects/v1alpha/effect.js";
 
 type Phase = "prep" | "wave" | "victory" | "defeat";
+type GameMode = "standard" | "daily" | "leaderboard";
 
 type BuildSelection =
   | { kind: "tower"; towerId: string }
   | { kind: "bank" }
   | { kind: "none" };
 
-interface Point {
-  x: number;
-  y: number;
-}
+type Point = GridPoint;
 
 interface Cell {
   terrain: "cliff" | "ground";
@@ -41,6 +53,43 @@ interface BaseMap {
   exit: Point;
   cells: Cell[];
 }
+
+const SPAWN_OFFSET = 1;
+const EXIT_OFFSET = 1;
+const END_SCENE_DURATION_MS = 6000;
+const END_SCENE_PLAYBACK_RATE = 2;
+const FEEDBACK_MAX_LENGTH = 500;
+const MODE_PARAM = "mode";
+const TEST_DAY_PARAM = "testDay";
+const DAILY_MODE = "daily";
+const LEADERBOARD_MODE = "leaderboard";
+const LEADERBOARD_FLAG_KEY = "lane-defense:leaderboard-only";
+const DEFEAT_VIDEO_URL = new URL("./defeat-animation.mp4", import.meta.url).href;
+const VICTORY_VIDEO_URL = new URL("./victory-animation.mp4", import.meta.url).href;
+
+const getEdgeOffset = (baseMap: BaseMap, point: Point, distance: number) => {
+  if (point.y <= 0) return { x: 0, y: -distance };
+  if (point.y >= baseMap.height - 1) return { x: 0, y: distance };
+  if (point.x <= 0) return { x: -distance, y: 0 };
+  if (point.x >= baseMap.width - 1) return { x: distance, y: 0 };
+  return { x: 0, y: -distance };
+};
+
+const getSpawnWorldPos = (baseMap: BaseMap) => {
+  const offset = getEdgeOffset(baseMap, baseMap.spawn, SPAWN_OFFSET);
+  return {
+    x: baseMap.spawn.x + 0.5 + offset.x,
+    y: baseMap.spawn.y + 0.5 + offset.y,
+  };
+};
+
+const getExitWorldPos = (baseMap: BaseMap) => {
+  const offset = getEdgeOffset(baseMap, baseMap.exit, EXIT_OFFSET);
+  return {
+    x: baseMap.exit.x + 0.5 + offset.x,
+    y: baseMap.exit.y + 0.5 + offset.y,
+  };
+};
 
 interface TowerInstance {
   id: number;
@@ -139,7 +188,38 @@ interface GameState {
   nextId: number;
   scoreSubmitted: boolean;
   scoreSubmitting: boolean;
+  weeklyRunRecorded: boolean;
 }
+
+interface RunStats {
+  score: number;
+  hp: number;
+  waves: number;
+  towers: number;
+  path: number;
+  dps: number;
+}
+
+interface DailyChallengeConfig {
+  date: string;
+  dayIndex: number;
+  seed: number;
+  spawn: GridPoint;
+  exit: GridPoint;
+  attemptUsed: boolean;
+  testMode: boolean;
+}
+
+const LEADERBOARD_PLACEHOLDER_STATS: RunStats = {
+  score: 0,
+  hp: 0,
+  waves: 0,
+  towers: 0,
+  path: 0,
+  dps: 0,
+};
+
+type LeaderboardSortKey = "name" | "score" | "hp" | "waves" | "towers" | "path" | "dps" | "attempts";
 
 interface View3D {
   canvas: HTMLCanvasElement;
@@ -186,7 +266,11 @@ interface Runtime {
 
 const TICK_RATE = 0.1;
 const MAX_SHOT_TTL = 0.32;
-const PREP_DURATION = 20;
+const PREP_DURATION = 15;
+const WEEKLY_RUNS_KEY = "lane-defense:weekly-runs";
+const GUEST_ID_KEY = "lane-defense:guest-id";
+const PST_TIMEZONE = "America/Los_Angeles";
+let guestIdCache: string | null = null;
 
 const buildTowerById = Object.fromEntries(TOWER_DEFS.map((tower) => [tower.id, tower]));
 let visualPack: VisualPack | null = null;
@@ -230,15 +314,19 @@ const getShotTtl = (towerId: string) => {
   }
 };
 
-const createBaseMap = (): BaseMap => {
+const createBaseMap = (overrides?: { spawn?: Point; exit?: Point }): BaseMap => {
   const cells: Cell[] = Array.from({ length: GRID_WIDTH * GRID_HEIGHT }, () => ({
     terrain: "ground",
     buildable: true,
   }));
 
   const laneX = Math.max(0, Math.min(GRID_WIDTH - 1, Math.floor((GRID_WIDTH - 1) / 2)));
-  const spawn = { x: laneX, y: 0 };
-  const exit = { x: laneX, y: GRID_HEIGHT - 1 };
+  const clampPoint = (point: Point) => ({
+    x: Math.max(0, Math.min(GRID_WIDTH - 1, point.x)),
+    y: Math.max(0, Math.min(GRID_HEIGHT - 1, point.y)),
+  });
+  const spawn = clampPoint(overrides?.spawn ?? { x: laneX, y: 0 });
+  const exit = clampPoint(overrides?.exit ?? { x: laneX, y: GRID_HEIGHT - 1 });
 
   const spawnIndex = tileIndex(spawn.x, spawn.y, GRID_WIDTH);
   const exitIndex = tileIndex(exit.x, exit.y, GRID_WIDTH);
@@ -361,6 +449,7 @@ const makeInitialState = (seed: number): GameState => {
     nextId: 1,
     scoreSubmitted: false,
     scoreSubmitting: false,
+    weeklyRunRecorded: false,
   };
 };
 
@@ -383,8 +472,8 @@ const buildSpawnQueue = (state: GameState) => {
   state.spawnCooldown = 0;
 };
 
-const createRuntime = (canvas: HTMLCanvasElement): Runtime => {
-  const baseMap = createBaseMap();
+const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; exit?: Point }): Runtime => {
+  const baseMap = createBaseMap(overrides);
   const structureByCell = new Map<number, Structure>();
   const distance = computeDistances(baseMap, structureByCell);
   const spawnIndex = tileIndex(baseMap.spawn.x, baseMap.spawn.y, baseMap.width);
@@ -452,6 +541,9 @@ const createRuntime = (canvas: HTMLCanvasElement): Runtime => {
   const groundPlane = createTerrainMesh(baseMap, visuals);
   mapGroup.add(groundPlane);
 
+  const edgeTiles = createEdgeTiles(baseMap, visuals);
+  mapGroup.add(edgeTiles);
+
   const foamMesh = createFoamMesh(baseMap, visuals);
   mapGroup.add(foamMesh);
 
@@ -459,11 +551,13 @@ const createRuntime = (canvas: HTMLCanvasElement): Runtime => {
   mapGroup.add(gridLines);
 
   const spawnMarker = createSpawnMarker(visuals);
-  spawnMarker.position.set(baseMap.spawn.x + 0.5, 0.2, baseMap.spawn.y + 0.5);
+  const spawnWorld = getSpawnWorldPos(baseMap);
+  spawnMarker.position.set(spawnWorld.x, 0.2, spawnWorld.y);
   mapGroup.add(spawnMarker);
 
   const exitMarker = createExitMarker(visuals);
-  exitMarker.position.set(baseMap.exit.x + 0.5, 0.2, baseMap.exit.y + 0.5);
+  const exitWorld = getExitWorldPos(baseMap);
+  exitMarker.position.set(exitWorld.x, 0.2, exitWorld.y);
   mapGroup.add(exitMarker);
 
   const selectionRing = new THREE.Mesh(
@@ -560,15 +654,31 @@ const createCreep = (state: GameState, typeId: string, runtime: Runtime): CreepI
   const def = CREEP_DEFS[typeId];
   const waveScale = 1 + (state.wave - 1) * GAME_CONFIG.waveHpScale;
   const speedScale = 1 + (state.wave - 1) * GAME_CONFIG.waveSpeedScale;
+  let hpDifficulty =
+    state.wave === 10
+      ? 3
+      : state.wave === 9
+        ? 2
+        : state.wave === 8
+          ? 1.5
+          : state.wave >= 7
+            ? 1.4
+            : state.wave >= 4
+              ? 1.1
+              : 1.0;
+  if (def.isBoss && state.wave === 10) {
+    hpDifficulty = 5;
+  }
 
+  const spawnWorld = getSpawnWorldPos(runtime.baseMap);
   return {
     id: state.nextId++,
     typeId,
-    hp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale,
-    maxHp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale,
+    hp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale * hpDifficulty,
+    maxHp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale * hpDifficulty,
     speed: def.baseSpeed * GAME_CONFIG.baseSpeedMult * speedScale,
-    x: runtime.baseMap.spawn.x + 0.5,
-    y: runtime.baseMap.spawn.y + 0.5,
+    x: spawnWorld.x,
+    y: spawnWorld.y,
     isFlying: def.isFlying,
     slowMultiplier: 1,
     slowTimer: 0,
@@ -748,6 +858,7 @@ const updateTowers = (state: GameState, runtime: Runtime, dt: number) => {
 const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
   const { baseMap } = runtime;
   const exit = baseMap.exit;
+  const exitTarget = getExitWorldPos(baseMap);
   const alive: CreepInstance[] = [];
 
   for (const creep of state.creeps) {
@@ -766,7 +877,7 @@ const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
       creep.x = position.x;
       creep.y = position.y;
       if (creep.airDistance >= runtime.airPath.total) {
-        state.lives -= CREEP_DEFS[creep.typeId].leakDamage;
+        state.lives = Math.max(0, state.lives - CREEP_DEFS[creep.typeId].leakDamage);
         continue;
       }
       alive.push(creep);
@@ -778,7 +889,17 @@ const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
     const currentIndex = tileIndex(cellX, cellY, baseMap.width);
 
     if (cellX == exit.x && cellY == exit.y) {
-      state.lives -= CREEP_DEFS[creep.typeId].leakDamage;
+      const dx = exitTarget.x - creep.x;
+      const dy = exitTarget.y - creep.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= 0.02) {
+        state.lives = Math.max(0, state.lives - CREEP_DEFS[creep.typeId].leakDamage);
+        continue;
+      }
+      const step = Math.min(distance, moveSpeed * dt);
+      creep.x += (dx / distance) * step;
+      creep.y += (dy / distance) * step;
+      alive.push(creep);
       continue;
     }
 
@@ -828,7 +949,7 @@ const cleanupCreeps = (state: GameState) => {
   const survivors: CreepInstance[] = [];
   for (const creep of state.creeps) {
     if (creep.hp <= 0) {
-      state.gold += Math.round(CREEP_DEFS[creep.typeId].bounty);
+      state.gold += Math.round(CREEP_DEFS[creep.typeId].bounty * 1.05);
       continue;
     }
     survivors.push(creep);
@@ -955,6 +1076,442 @@ const updateWaveState = (state: GameState, runtime: Runtime, dt: number) => {
 const calcScore = (state: GameState) => {
   const wavesCleared = state.phase == "victory" ? MAX_WAVES : state.wave - 1;
   return Math.max(0, wavesCleared) * 1000 + Math.max(0, state.lives) * 50 + state.gold;
+};
+
+const calcTotalDps = (state: GameState) => {
+  return state.structures.reduce((sum, structure) => {
+    if (structure.kind != "tower") return sum;
+    const def = getTower(structure.towerId);
+    const tier = def.tiers[structure.tier];
+    const scaledDamage = getScaledDamage(def, structure.tier);
+    return sum + scaledDamage * tier.rate;
+  }, 0);
+};
+
+const getRunStats = (state: GameState, runtime: Runtime): RunStats => {
+  const score = calcScore(state);
+  const wavesCleared = state.phase == "victory" ? MAX_WAVES : state.wave - 1;
+  const towers = state.structures.filter((structure) => structure.kind == "tower").length;
+  const path = Number.isFinite(runtime.pathLength) ? runtime.pathLength : 0;
+  const dps = calcTotalDps(state);
+  return {
+    score,
+    hp: Math.max(0, state.lives),
+    waves: wavesCleared,
+    towers,
+    path,
+    dps,
+  };
+};
+
+const formatStatNumber = (value: number) => {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+};
+
+const PST_WEEKDAY_MAP: Record<string, number> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
+const getPstDateParts = (date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: PST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  });
+  const parts = formatter.formatToParts(date);
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let weekday = "Mon";
+  for (const part of parts) {
+    if (part.type === "year") year = Number(part.value);
+    if (part.type === "month") month = Number(part.value);
+    if (part.type === "day") day = Number(part.value);
+    if (part.type === "weekday") weekday = part.value;
+  }
+  return {
+    year,
+    month,
+    day,
+    weekdayIndex: PST_WEEKDAY_MAP[weekday] ?? 1,
+  };
+};
+
+const getClientWeekKey = () => {
+  const { year, month, day, weekdayIndex } = getPstDateParts();
+  const today = new Date(Date.UTC(year, month - 1, day));
+  const weekStart = new Date(today);
+  weekStart.setUTCDate(today.getUTCDate() - (weekdayIndex - 1));
+  return weekStart.toISOString().slice(0, 10);
+};
+
+const loadWeeklyRuns = (weekKey: string): RunStats[] => {
+  try {
+    const raw = localStorage.getItem(WEEKLY_RUNS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { weekKey?: string; runs?: RunStats[] };
+    if (!parsed || parsed.weekKey !== weekKey || !Array.isArray(parsed.runs)) return [];
+    return parsed.runs;
+  } catch {
+    return [];
+  }
+};
+
+const saveWeeklyRuns = (weekKey: string, runs: RunStats[]) => {
+  try {
+    localStorage.setItem(WEEKLY_RUNS_KEY, JSON.stringify({ weekKey, runs }));
+  } catch {
+    // Ignore local storage failures.
+  }
+};
+
+const recordWeeklyRun = (stats: RunStats) => {
+  const weekKey = currentWeekKey || getClientWeekKey();
+  if (!currentWeekKey) {
+    currentWeekKey = weekKey;
+  }
+  const entries = loadWeeklyRuns(weekKey);
+  const next = [stats, ...entries];
+  saveWeeklyRuns(weekKey, next);
+  return next;
+};
+
+const getBestWeeklyRun = (runs: RunStats[]): RunStats | null => {
+  let best: RunStats | null = null;
+  for (const run of runs) {
+    if (!best || run.score > best.score) {
+      best = run;
+    }
+  }
+  return best;
+};
+
+const generateGuestId = () => {
+  const bytes = new Uint8Array(8);
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const getGuestId = () => {
+  if (guestIdCache) return guestIdCache;
+  try {
+    const stored = localStorage.getItem(GUEST_ID_KEY);
+    if (stored && /^[a-z0-9]{8,32}$/.test(stored)) {
+      guestIdCache = stored;
+      return stored;
+    }
+  } catch {
+    // Ignore local storage access errors.
+  }
+  const fresh = generateGuestId();
+  guestIdCache = fresh;
+  try {
+    localStorage.setItem(GUEST_ID_KEY, fresh);
+  } catch {
+    // Ignore local storage write errors.
+  }
+  return fresh;
+};
+
+const LEADERBOARD_COLUMN_COUNT = 8;
+const HISTORY_COLUMN_COUNT = 7;
+
+const getLeaderboardValue = (entry: LeaderboardResponse["entries"][number], key: LeaderboardSortKey) => {
+  switch (key) {
+    case "name":
+      return entry.username?.toLowerCase() ?? "";
+    case "hp":
+      return entry.hp;
+    case "waves":
+      return entry.waves;
+    case "towers":
+      return entry.towers;
+    case "path":
+      return entry.path;
+    case "dps":
+      return entry.dps;
+    case "attempts":
+      return entry.attempts ?? 0;
+    case "score":
+    default:
+      return entry.score;
+  }
+};
+
+const sortLeaderboardEntries = (
+  entries: LeaderboardResponse["entries"],
+  sortState: { key: LeaderboardSortKey; dir: "asc" | "desc" }
+) => {
+  const sorted = [...entries];
+  const { key, dir } = sortState;
+  sorted.sort((a, b) => {
+    const aVal = getLeaderboardValue(a, key);
+    const bVal = getLeaderboardValue(b, key);
+    if (typeof aVal === "string" || typeof bVal === "string") {
+      return dir === "asc"
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    }
+    return dir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+  });
+  return sorted;
+};
+
+const updateLeaderboardSortUI = (
+  tableId: string,
+  sortState: { key: LeaderboardSortKey; dir: "asc" | "desc" }
+) => {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const headers = table.querySelectorAll<HTMLTableCellElement>("th[data-sort]");
+  headers.forEach((header) => {
+    const key = header.dataset.sort as LeaderboardSortKey | undefined;
+    if (key && key === sortState.key) {
+      header.classList.add("sorted");
+      header.dataset.dir = sortState.dir;
+    } else {
+      header.classList.remove("sorted");
+      header.removeAttribute("data-dir");
+    }
+  });
+};
+
+const renderTableEmpty = (body: HTMLElement, message: string, colSpan: number) => {
+  body.innerHTML = "";
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = colSpan;
+  cell.textContent = message;
+  row.appendChild(cell);
+  body.appendChild(row);
+};
+
+const renderLeaderboardTable = (options: {
+  tableId: string;
+  bodyId: string;
+  entries: LeaderboardResponse["entries"];
+  self: LeaderboardResponse["self"] | null;
+  sortState: { key: LeaderboardSortKey; dir: "asc" | "desc" };
+}) => {
+  const body = document.getElementById(options.bodyId);
+  if (!body) return;
+  updateLeaderboardSortUI(options.tableId, options.sortState);
+  const sorted = sortLeaderboardEntries(options.entries, options.sortState);
+  const visible = sorted.slice(0, 500);
+  let selfEntry: LeaderboardResponse["entries"][number] | null = null;
+  if (options.self) {
+    selfEntry = {
+      ...options.self,
+      username: "You",
+      attempts: options.self.attempts ?? 0,
+    };
+  }
+  if (selfEntry) {
+    const alreadyVisible = visible.some(
+      (entry) =>
+        entry.score === selfEntry?.score &&
+        entry.waves === selfEntry?.waves &&
+        entry.hp === selfEntry?.hp &&
+        entry.towers === selfEntry?.towers &&
+        entry.path === selfEntry?.path &&
+        Math.abs(entry.dps - selfEntry?.dps) < 0.01
+    );
+    if (!alreadyVisible) {
+      visible.push(selfEntry);
+    }
+  }
+
+  if (!visible.length) {
+    renderTableEmpty(body, "No scores yet", LEADERBOARD_COLUMN_COUNT);
+    return;
+  }
+
+  body.innerHTML = "";
+  let loggedOutCount = 0;
+  for (const entry of visible) {
+    const isAnonymous = !entry.username || entry.username === "Anonymous";
+    if (isAnonymous) loggedOutCount += 1;
+    const name = isAnonymous ? `Logged-Out-${loggedOutCount}` : entry.username;
+    const row = document.createElement("tr");
+    if (entry.username === "You") row.classList.add("is-self");
+    row.innerHTML = `
+      <td class="col-player">${name}</td>
+      <td class="num">${entry.score}</td>
+      <td class="num">${Math.max(0, entry.hp)}</td>
+      <td class="num">${entry.waves}</td>
+      <td class="num">${entry.towers}</td>
+      <td class="num">${entry.path}</td>
+      <td class="num">${formatStatNumber(entry.dps)}</td>
+      <td class="num">${entry.attempts ?? 0}</td>
+    `;
+    body.appendChild(row);
+  }
+};
+
+const renderWeeklyLeaderboard = () =>
+  renderLeaderboardTable({
+    tableId: "weekly-leaderboard-table",
+    bodyId: "weekly-leaderboard-rows",
+    entries: weeklyLeaderboardEntries,
+    self: weeklyLeaderboardSelf,
+    sortState: weeklyLeaderboardSort,
+  });
+
+const renderDailyLeaderboard = () =>
+  renderLeaderboardTable({
+    tableId: "daily-leaderboard-table",
+    bodyId: "daily-leaderboard-rows",
+    entries: dailyLeaderboardEntries,
+    self: dailyLeaderboardSelf,
+    sortState: dailyLeaderboardSort,
+  });
+
+const updateWeeklyLeaderboardHeading = (data: LeaderboardResponse) => {
+  const title = document.querySelector("#end-weekly-leaderboard .end-section-title");
+  const subtitle = document.querySelector("#end-weekly-leaderboard .end-section-subtitle");
+  const dateLine = document.getElementById("weekly-leaderboard-date");
+  const rangeLabel = formatWeekRange(data.weekStart, data.weekEnd);
+  if (title) {
+    title.textContent = "Weekly Leaderboard";
+  }
+  if (subtitle) {
+    subtitle.textContent = "All players this week";
+  }
+  if (dateLine) {
+    dateLine.textContent = rangeLabel || "--";
+  }
+};
+
+const updateDailyLeaderboardHeading = (data: DailyChallengeLeaderboardResponse) => {
+  const title = document.querySelector("#end-daily-leaderboard .end-section-title");
+  const subtitle = document.querySelector("#end-daily-leaderboard .end-section-subtitle");
+  const dateLine = document.getElementById("daily-leaderboard-date");
+  if (title) {
+    title.textContent = "Daily Challenge Leaderboard";
+  }
+  if (subtitle) {
+    subtitle.textContent = "All players today";
+  }
+  if (dateLine) {
+    dateLine.textContent = formatDailyDate(data.date) || "--";
+  }
+};
+
+const renderHistory = (entries: RunStats[]) => {
+  const body = document.getElementById("history-rows");
+  if (!body) return;
+  if (!entries.length) {
+    renderTableEmpty(body, "No games yet", HISTORY_COLUMN_COUNT);
+    return;
+  }
+  body.innerHTML = "";
+  entries.forEach((entry, index) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="col-player">Run ${index + 1}${index === 0 ? " [just completed]" : ""}</td>
+      <td class="num">${entry.score}</td>
+      <td class="num">${Math.max(0, entry.hp)}</td>
+      <td class="num">${entry.waves}</td>
+      <td class="num">${entry.towers}</td>
+      <td class="num">${entry.path}</td>
+      <td class="num">${formatStatNumber(entry.dps)}</td>
+    `;
+    body.appendChild(row);
+  });
+};
+
+const loadWeeklyLeaderboard = async () => {
+  const body = document.getElementById("weekly-leaderboard-rows");
+  if (!body) return;
+  try {
+    const guestId = getGuestId();
+    const response = await fetch(
+      `/api/leaderboard?ts=${Date.now()}&guestId=${guestId}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) {
+      throw new Error("leaderboard fetch failed");
+    }
+    const data = (await response.json()) as LeaderboardResponse;
+    if (data.type !== "leaderboard") {
+      throw new Error("invalid leaderboard response");
+    }
+    weeklyLeaderboardEntries = data.entries;
+    weeklyLeaderboardSelf = data.self ?? null;
+    currentWeekKey = data.weekStart ?? data.date;
+    updateWeeklyLeaderboardHeading(data);
+    renderWeeklyLeaderboard();
+  } catch {
+    weeklyLeaderboardEntries = [];
+    weeklyLeaderboardSelf = null;
+    renderTableEmpty(body, "Leaderboard unavailable", LEADERBOARD_COLUMN_COUNT);
+  }
+};
+
+const loadDailyLeaderboard = async () => {
+  const body = document.getElementById("daily-leaderboard-rows");
+  if (!body) return;
+  try {
+    const guestId = getGuestId();
+    const testQuery = dailyTestDay ? `&testDay=${encodeURIComponent(dailyTestDay)}` : "";
+    const response = await fetch(
+      `/api/daily-challenge-leaderboard?ts=${Date.now()}&guestId=${guestId}${testQuery}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) {
+      throw new Error("daily leaderboard fetch failed");
+    }
+    const data = (await response.json()) as DailyChallengeLeaderboardResponse;
+    if (data.type !== "daily-challenge-leaderboard") {
+      throw new Error("invalid daily leaderboard response");
+    }
+    dailyLeaderboardEntries = data.entries;
+    dailyLeaderboardSelf = data.self ?? null;
+    updateDailyLeaderboardHeading(data);
+    renderDailyLeaderboard();
+  } catch {
+    dailyLeaderboardEntries = [];
+    dailyLeaderboardSelf = null;
+    renderTableEmpty(body, "Leaderboard unavailable", LEADERBOARD_COLUMN_COUNT);
+  }
+};
+
+const setupLeaderboardSort = (
+  tableId: string,
+  sortState: { key: LeaderboardSortKey; dir: "asc" | "desc" },
+  render: () => void
+) => {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const headers = table.querySelectorAll<HTMLTableCellElement>("th[data-sort]");
+  headers.forEach((header) => {
+    header.addEventListener("click", () => {
+      const key = header.dataset.sort as LeaderboardSortKey | undefined;
+      if (!key) return;
+      if (sortState.key === key) {
+        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+      } else {
+        sortState.key = key;
+        sortState.dir = key === "name" ? "asc" : "desc";
+      }
+      render();
+    });
+  });
+  updateLeaderboardSortUI(tableId, sortState);
 };
 
 const formatPathLength = (runtime: Runtime) => {
@@ -1263,11 +1820,11 @@ const createVisualPack = (): VisualPack => {
     }),
     gold: new THREE.MeshStandardMaterial({
       map: textures.metal,
-      color: 0xf2cf86,
-      roughness: 0.3,
-      metalness: 0.85,
-      emissive: new THREE.Color(0x6b4c1f),
-      emissiveIntensity: 0.32,
+      color: 0xffd991,
+      roughness: 0.18,
+      metalness: 0.95,
+      emissive: new THREE.Color(0xb97a2a),
+      emissiveIntensity: 0.6,
     }),
   };
 
@@ -1306,6 +1863,26 @@ const createTerrainMesh = (baseMap: BaseMap, visuals: VisualPack) => {
   mesh.position.set(baseMap.width / 2, 0, baseMap.height / 2);
   mesh.receiveShadow = true;
   return mesh;
+};
+
+const createEdgeTiles = (baseMap: BaseMap, visuals: VisualPack) => {
+  const group = new THREE.Group();
+  const geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
+  const material = visuals.materials.lane;
+
+  const makeTile = (x: number, y: number) => {
+    const tile = new THREE.Mesh(geometry, material);
+    tile.rotation.x = -Math.PI / 2;
+    tile.position.set(x, 0.02, y);
+    tile.receiveShadow = true;
+    group.add(tile);
+  };
+
+  const spawnWorld = { x: baseMap.spawn.x + 0.5, y: baseMap.spawn.y + 0.5 };
+  const exitWorld = { x: baseMap.exit.x + 0.5, y: baseMap.exit.y + 0.5 };
+  makeTile(spawnWorld.x, spawnWorld.y);
+  makeTile(exitWorld.x, exitWorld.y);
+  return group;
 };
 
 const createFoamMesh = (baseMap: BaseMap, visuals: VisualPack) => {
@@ -1425,12 +2002,12 @@ const getTowerAccent = (towerId: string) => {
     case "slow":
       return new THREE.Color(0x4e8dd6);
     case "long":
-      return new THREE.Color(0x7a7f87);
+      return new THREE.Color(0xd3dee9);
     case "wall":
       return new THREE.Color(0x8a8f98);
     case "basic":
     default:
-      return new THREE.Color(0x7a4d2b);
+      return new THREE.Color(0xe9ad5a);
   }
 };
 
@@ -1484,7 +2061,8 @@ const setMuzzleIntensity = (muzzle: THREE.Object3D | undefined, intensity: numbe
 };
 
 const buildTowerMesh = (tower: TowerInstance) => {
-  const { materials } = getVisualPack();
+  const visuals = getVisualPack();
+  const { materials } = visuals;
   const group = new THREE.Group();
   const accent = getTowerAccent(tower.towerId);
   const accentMat = new THREE.MeshStandardMaterial({
@@ -1513,42 +2091,125 @@ const buildTowerMesh = (tower: TowerInstance) => {
     accentMat.metalness = 0.25;
     trimMat.emissiveIntensity = 0.35;
   }
+  if (tower.towerId == "basic") {
+    accentMat.emissiveIntensity = 0.85;
+    accentMat.roughness = 0.2;
+    accentMat.metalness = 0.5;
+    trimMat.emissiveIntensity = 0.55;
+  }
+  if (tower.towerId == "long") {
+    accentMat.emissiveIntensity = 0.75;
+    accentMat.roughness = 0.18;
+    accentMat.metalness = 0.8;
+    trimMat.emissiveIntensity = 0.45;
+  }
 
-  const raft = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.1, 0.92), materials.wood);
-  raft.position.y = 0.05;
-  group.add(raft);
+  if (tower.towerId !== "wall") {
+    const raft = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.1, 0.92), materials.wood);
+    raft.position.y = 0.05;
+    group.add(raft);
 
-  const floatRing = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.1, 18), materials.wood);
-  floatRing.position.y = 0.12;
-  group.add(floatRing);
+    const floatRing = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.1, 18), materials.wood);
+    floatRing.position.y = 0.12;
+    group.add(floatRing);
 
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.7), materials.stoneDark);
-  deck.position.y = 0.17;
-  group.add(deck);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.7), materials.stoneDark);
+    deck.position.y = 0.17;
+    group.add(deck);
 
-  const trimRingMaterial = tower.towerId == "splash" ? accentMat : materials.bronze;
-  const trimRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 12, 26), trimRingMaterial);
-  trimRing.rotation.x = Math.PI / 2;
-  trimRing.position.y = 0.19;
-  group.add(trimRing);
+    const trimRingMaterial = tower.towerId == "splash" ? accentMat : materials.bronze;
+    const trimRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 12, 26), trimRingMaterial);
+    trimRing.rotation.x = Math.PI / 2;
+    trimRing.position.y = 0.19;
+    group.add(trimRing);
+  }
 
   if (tower.towerId == "wall") {
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.52, 0.28, 14), materials.stoneDark);
-    base.position.y = 0.2;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.1, 14), materials.stone);
+    base.position.y = 0.06;
     group.add(base);
 
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 0), materials.stone);
-    rock.position.y = 0.42;
-    rock.rotation.set(0.2, 0.6, 0.1);
-    group.add(rock);
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.32, 0.4, 12), materials.stone);
+    stack.position.y = 0.28;
+    stack.rotation.y = 0.25;
+    group.add(stack);
 
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.08, 0.58), materials.stoneDark);
-    slab.position.y = 0.58;
-    slab.rotation.y = 0.25;
-    group.add(slab);
+    const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(0.19, 1), materials.stone);
+    crown.position.y = 0.5;
+    crown.rotation.set(0.35, 0.7, 0.2);
+    crown.scale.set(1, 1.05, 0.9);
+    group.add(crown);
 
-    group.userData = { kind: "tower", towerId: tower.towerId, tier: tower.tier };
-    applyShadows(group);
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 10), materials.stoneDark);
+    spire.position.set(0.02, 0.62, -0.02);
+    spire.rotation.z = 0.2;
+    group.add(spire);
+
+    const foamTexture = visuals.textures.foam;
+    const foamMat = new THREE.MeshBasicMaterial({
+      map: foamTexture,
+      color: 0x8feaff,
+      transparent: true,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const foamRing = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.56, 44), foamMat);
+    foamRing.rotation.x = -Math.PI / 2;
+    foamRing.position.y = 0.055;
+    foamRing.renderOrder = 3;
+    group.add(foamRing);
+
+    const waterline = new THREE.Mesh(
+      new THREE.RingGeometry(0.18, 0.34, 32),
+      new THREE.MeshBasicMaterial({
+        map: foamTexture,
+        color: 0x66c6f7,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+      })
+    );
+    waterline.rotation.x = -Math.PI / 2;
+    waterline.position.y = 0.05;
+    waterline.renderOrder = 2;
+    group.add(waterline);
+
+    const foamSpecks: THREE.Mesh[] = [];
+    const speckMat = new THREE.MeshBasicMaterial({
+      color: 0xeaf7ff,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    for (let i = 0; i < 14; i += 1) {
+      const size = 0.018 + Math.random() * 0.025;
+      const speck = new THREE.Mesh(new THREE.CircleGeometry(size, 10), speckMat.clone());
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 0.26 + Math.random() * 0.2;
+      const y = 0.06 + Math.random() * 0.04;
+      speck.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      speck.rotation.x = -Math.PI / 2;
+      speck.renderOrder = 3;
+      speck.userData = { angle, radius, speed: 0.35 + Math.random() * 0.45, y };
+      foamSpecks.push(speck);
+      group.add(speck);
+    }
+
+    group.userData = { kind: "tower", towerId: tower.towerId, tier: tower.tier, foamRing, foamSpecks, waterline };
+    for (const piece of [base, stack, crown, spire]) {
+      piece.castShadow = false;
+      piece.receiveShadow = false;
+    }
+    for (const piece of [foamRing, waterline, ...foamSpecks]) {
+      piece.castShadow = false;
+      piece.receiveShadow = false;
+    }
     return group;
   }
 
@@ -1712,14 +2373,19 @@ const buildTowerMesh = (tower: TowerInstance) => {
     frame.position.set(0, 0.22, -0.02);
     recoilGroup.add(frame);
 
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.1), materials.iron);
+    const armMat = materials.iron.clone();
+    armMat.color = accent.clone().lerp(new THREE.Color(0xffffff), 0.35);
+    armMat.emissive = accent.clone();
+    armMat.emissiveIntensity = 0.35;
+    armMat.roughness = 0.3;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.1), armMat);
     arm.position.set(0, 0.34, 0.14);
     recoilGroup.add(arm);
 
     const stringMat = new THREE.MeshBasicMaterial({
-      color: 0xe6edf7,
+      color: accent.clone().lerp(new THREE.Color(0xffffff), 0.55),
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
       depthWrite: false,
     });
     const string = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.5, 6), stringMat);
@@ -1727,15 +2393,24 @@ const buildTowerMesh = (tower: TowerInstance) => {
     string.position.set(0, 0.34, 0.14);
     recoilGroup.add(string);
 
-    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.05, 8), materials.iron);
+    const boltMat = accentMat.clone();
+    boltMat.emissiveIntensity = 0.65;
+    boltMat.metalness = 0.7;
+    boltMat.roughness = 0.2;
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.05, 8), boltMat);
     bolt.rotation.x = Math.PI / 2;
     bolt.position.set(0, 0.3, 0.2);
     recoilGroup.add(bolt);
 
-    const boltTip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 10), materials.iron);
+    const boltTip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 10), boltMat);
     boltTip.rotation.x = Math.PI / 2;
     boltTip.position.set(0, 0.3, 0.72);
     recoilGroup.add(boltTip);
+
+    const coreGlow = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.012, 10, 18), accentMat);
+    coreGlow.rotation.x = Math.PI / 2;
+    coreGlow.position.set(0, 0.26, 0.12);
+    recoilGroup.add(coreGlow);
 
     muzzleOffsets = [{ x: 0, y: 0.32, z: 0.8 }];
   } else if (tower.towerId == "rapid") {
@@ -1778,14 +2453,19 @@ const buildTowerMesh = (tower: TowerInstance) => {
     stock.position.set(0, 0.28, 0.06);
     recoilGroup.add(stock);
 
-    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.1), materials.iron);
+    const bowMat = materials.iron.clone();
+    bowMat.color = accent.clone().lerp(new THREE.Color(0xffffff), 0.3);
+    bowMat.emissive = accent.clone();
+    bowMat.emissiveIntensity = 0.3;
+    bowMat.roughness = 0.35;
+    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.1), bowMat);
     bow.position.set(0, 0.28, 0.26);
     recoilGroup.add(bow);
 
     const stringMat = new THREE.MeshBasicMaterial({
-      color: 0xe6edf7,
+      color: accent.clone().lerp(new THREE.Color(0xffffff), 0.55),
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
       depthWrite: false,
     });
     const string = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.5, 6), stringMat);
@@ -1793,12 +2473,16 @@ const buildTowerMesh = (tower: TowerInstance) => {
     string.position.set(0, 0.28, 0.26);
     recoilGroup.add(string);
 
-    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 6), materials.iron);
+    const boltMat = accentMat.clone();
+    boltMat.emissiveIntensity = 0.55;
+    boltMat.metalness = 0.6;
+    boltMat.roughness = 0.25;
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 6), boltMat);
     bolt.rotation.x = Math.PI / 2;
     bolt.position.set(0, 0.32, 0.06);
     recoilGroup.add(bolt);
 
-    const boltTip = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 8), materials.iron);
+    const boltTip = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 8), boltMat);
     boltTip.rotation.x = Math.PI / 2;
     boltTip.position.set(0, 0.32, 0.32);
     recoilGroup.add(boltTip);
@@ -1826,6 +2510,22 @@ const buildTowerMesh = (tower: TowerInstance) => {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.1 + i * 0.09;
     group.add(ring);
+  }
+
+  if (tower.towerId === "basic" || tower.towerId === "long") {
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const aura = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), auraMat);
+    aura.rotation.x = -Math.PI / 2;
+    aura.position.y = 0.12;
+    aura.renderOrder = 3;
+    group.add(aura);
+    group.userData = { ...group.userData, aura };
   }
 
   if (tower.tier >= 2) {
@@ -1872,32 +2572,55 @@ const buildBankMesh = () => {
   base.position.y = 0.13;
   group.add(base);
 
-  const vault = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.32, 0.42), materials.wood);
+  const vault = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.32, 0.42), materials.stone);
   vault.position.y = 0.33;
   group.add(vault);
 
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.46), materials.bronze);
+  const goldMat = materials.gold.clone();
+  goldMat.emissiveIntensity = 0.75;
+  goldMat.roughness = 0.16;
+  goldMat.metalness = 0.98;
+
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.36, 0.46), goldMat);
   frame.position.y = 0.33;
   group.add(frame);
 
-  const door = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 14), materials.gold);
+  const door = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 14), goldMat);
   door.position.set(0, 0.33, 0.25);
   door.rotation.x = Math.PI / 2;
   group.add(door);
 
-  const coinStack = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 12), materials.gold);
+  const coinStack = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 12), goldMat);
   coinStack.position.set(-0.18, 0.2, -0.12);
   group.add(coinStack);
   const coinStack2 = coinStack.clone();
   coinStack2.position.set(0.2, 0.2, -0.16);
   group.add(coinStack2);
 
-  const crest = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 10, 20), materials.gold);
+  const crest = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 10, 20), goldMat);
   crest.position.set(0, 0.48, 0);
   crest.rotation.x = Math.PI / 2;
   group.add(crest);
 
-  group.userData = { kind: "bank" };
+  const auraMat = new THREE.MeshBasicMaterial({
+    color: 0xffe0a8,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const aura = new THREE.Mesh(new THREE.RingGeometry(0.38, 0.48, 32), auraMat);
+  aura.rotation.x = -Math.PI / 2;
+  aura.position.y = 0.12;
+  aura.renderOrder = 3;
+  group.add(aura);
+
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 10, 20), auraMat);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.set(0, 0.5, 0);
+  group.add(halo);
+
+  group.userData = { kind: "bank", aura, halo };
   applyShadows(group);
   return group;
 };
@@ -2228,12 +2951,16 @@ const buildShotMesh = (towerId: string, color: string) => {
   }
 
   const arrowMat = materials.iron.clone();
-  arrowMat.color = new THREE.Color(0x7a6f64).lerp(accent, 0.2);
-  arrowMat.roughness = 0.5;
+  arrowMat.color = new THREE.Color(0x7a6f64).lerp(accent, towerId === "long" ? 0.55 : 0.45);
+  arrowMat.roughness = 0.32;
+  arrowMat.emissive = accent.clone();
+  arrowMat.emissiveIntensity = towerId === "long" ? 0.4 : 0.3;
 
   const fletchMat = materials.cloth.clone();
-  fletchMat.color = accent.clone().lerp(new THREE.Color(0xffffff), 0.2);
-  fletchMat.roughness = 0.6;
+  fletchMat.color = accent.clone().lerp(new THREE.Color(0xffffff), 0.45);
+  fletchMat.roughness = 0.45;
+  fletchMat.emissive = accent.clone().lerp(new THREE.Color(0xffffff), 0.2);
+  fletchMat.emissiveIntensity = towerId === "long" ? 0.35 : 0.25;
 
   const makeArrow = (offsetX: number, length: number) => {
     const arrow = new THREE.Group();
@@ -2248,6 +2975,10 @@ const buildShotMesh = (towerId: string, color: string) => {
     const fletch = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.12), fletchMat);
     fletch.position.y = -length * 0.2;
     arrow.add(fletch);
+
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), glowMat);
+    glow.position.y = length * 0.58;
+    arrow.add(glow);
 
     arrow.position.x = offsetX;
     group.add(arrow);
@@ -2274,7 +3005,8 @@ const buildShotMesh = (towerId: string, color: string) => {
     group.add(brace);
   }
 
-  const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, arrowLength * 0.6, 6), glowMat);
+  const trailRadius = towerId === "long" ? 0.07 : 0.055;
+  const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, trailRadius, arrowLength * 0.6, 6), glowMat);
   trail.position.y = -arrowLength * 0.1;
   group.add(trail);
 
@@ -2330,8 +3062,10 @@ const resizeCanvas = (runtime: Runtime) => {
 
 const updateMapMarkers = (runtime: Runtime) => {
   const { baseMap, view } = runtime;
-  view.spawnMarker.position.set(baseMap.spawn.x + 0.5, 0.2, baseMap.spawn.y + 0.5);
-  view.exitMarker.position.set(baseMap.exit.x + 0.5, 0.2, baseMap.exit.y + 0.5);
+  const spawnWorld = getSpawnWorldPos(baseMap);
+  const exitWorld = getExitWorldPos(baseMap);
+  view.spawnMarker.position.set(spawnWorld.x, 0.2, spawnWorld.y);
+  view.exitMarker.position.set(exitWorld.x, 0.2, exitWorld.y);
 };
 
 const getVisualTarget = (tower: TowerInstance, state: GameState, runtime: Runtime) => {
@@ -2423,6 +3157,54 @@ const syncStructures = (runtime: Runtime, state: GameState, timeSec: number) => 
         frostHalo.scale.setScalar(0.9 + Math.sin(timeSec * 3 + structure.id) * 0.12);
         if (frostHalo.material instanceof THREE.MeshBasicMaterial) {
           frostHalo.material.opacity = 0.25 + Math.sin(timeSec * 5 + structure.id) * 0.1;
+        }
+      }
+
+      const aura = mesh.userData?.aura as THREE.Mesh | undefined;
+      if (aura && aura.material instanceof THREE.MeshBasicMaterial) {
+        const pulse = 0.92 + Math.sin(timeSec * 4.2 + structure.id) * 0.08;
+        aura.scale.set(pulse, pulse, pulse);
+        aura.material.opacity = 0.25 + Math.sin(timeSec * 5.4 + structure.id) * 0.1;
+      }
+    } else if (structure.kind == "bank") {
+      const aura = mesh.userData?.aura as THREE.Mesh | undefined;
+      const halo = mesh.userData?.halo as THREE.Mesh | undefined;
+      if (aura && aura.material instanceof THREE.MeshBasicMaterial) {
+        const pulse = 0.94 + Math.sin(timeSec * 3.6 + structure.id) * 0.08;
+        aura.scale.set(pulse, pulse, pulse);
+        aura.material.opacity = 0.28 + Math.sin(timeSec * 4.8 + structure.id) * 0.12;
+      }
+      if (halo) {
+        halo.rotation.z = timeSec * 0.8;
+      }
+    } else if (structure.kind == "tower" && structure.towerId === "wall") {
+      const foamRing = mesh.userData?.foamRing as THREE.Mesh | undefined;
+      if (foamRing && foamRing.material instanceof THREE.MeshBasicMaterial) {
+        const pulse = 0.94 + Math.sin(timeSec * 4 + structure.id) * 0.06;
+        foamRing.scale.set(pulse, pulse, pulse);
+        foamRing.material.opacity = 0.6 + Math.sin(timeSec * 4.6 + structure.id) * 0.12;
+        foamRing.rotation.z = timeSec * 0.45 + structure.id * 0.2;
+      }
+      const waterline = mesh.userData?.waterline as THREE.Mesh | undefined;
+      if (waterline && waterline.material instanceof THREE.MeshBasicMaterial) {
+        waterline.rotation.z = -timeSec * 0.35 - structure.id * 0.15;
+        waterline.material.opacity = 0.45 + Math.sin(timeSec * 3.6 + structure.id) * 0.08;
+      }
+      const foamSpecks = mesh.userData?.foamSpecks as THREE.Mesh[] | undefined;
+      if (foamSpecks) {
+        for (let i = 0; i < foamSpecks.length; i += 1) {
+          const speck = foamSpecks[i];
+          const speckData = speck.userData as { angle: number; radius: number; speed: number; y: number } | undefined;
+          if (speckData) {
+            const theta = speckData.angle + timeSec * speckData.speed + structure.id * 0.05;
+            speck.position.set(Math.cos(theta) * speckData.radius, speckData.y, Math.sin(theta) * speckData.radius);
+            speck.rotation.z = theta;
+          } else {
+            speck.rotation.z = timeSec * 0.6 + i;
+          }
+          if (speck.material instanceof THREE.MeshBasicMaterial) {
+            speck.material.opacity = 0.6 + Math.sin(timeSec * 5.4 + structure.id + i) * 0.25;
+          }
         }
       }
     }
@@ -2595,8 +3377,9 @@ const syncShots = (runtime: Runtime, state: GameState, timeSec: number) => {
       flameShell.scale.setScalar(shellPulse);
     }
     if (trail && trail.material instanceof THREE.MeshBasicMaterial) {
-      trail.material.opacity = 0.25 + 0.45 * alpha;
-      trail.scale.set(1, 0.7 + alpha * 0.9, 1);
+      const trailBoost = shot.towerId === "long" ? 1.4 : shot.towerId === "basic" ? 1.2 : 1;
+      trail.material.opacity = Math.min(1, (0.25 + 0.45 * alpha) * trailBoost);
+      trail.scale.set(1, 0.75 + alpha * 1.05, 1);
     }
     if (shard && shard.material instanceof THREE.MeshStandardMaterial) {
       shard.rotation.y += 0.1;
@@ -2677,6 +3460,14 @@ const updateNextRoundButton = (state: GameState) => {
   nextRoundButton.disabled = !visible;
 };
 
+const updateSpeedToggle = (state: GameState) => {
+  if (!speedToggleButton) return;
+  const visible = hasRendered && state.phase == "wave";
+  speedToggleButton.classList.toggle("hidden", !visible);
+  speedToggleButton.classList.toggle("active", speedMultiplier > 1);
+  speedToggleButton.textContent = speedMultiplier > 1 ? "Speed x1" : "Speed x2";
+};
+
 const updateHud = (state: GameState, runtime: Runtime) => {
   const goldEl = document.getElementById("gold-value");
   const livesEl = document.getElementById("lives-value");
@@ -2688,7 +3479,7 @@ const updateHud = (state: GameState, runtime: Runtime) => {
   const bankEl = document.getElementById("bank-income");
 
   if (goldEl) goldEl.textContent = `${state.gold}`;
-  if (livesEl) livesEl.textContent = `${state.lives}`;
+  if (livesEl) livesEl.textContent = `${Math.max(0, state.lives)}`;
   if (waveEl) waveEl.textContent = `${state.wave}/${MAX_WAVES}`;
   if (timerEl) {
     timerEl.textContent = state.phase == "prep" ? `${Math.ceil(state.phaseTimer)}s` : "--";
@@ -2700,15 +3491,8 @@ const updateHud = (state: GameState, runtime: Runtime) => {
     towersEl.textContent = `${towerCount}`;
   }
   if (dpsEl) {
-    const totalDps = state.structures.reduce((sum, structure) => {
-      if (structure.kind != "tower") return sum;
-      const def = getTower(structure.towerId);
-      const tier = def.tiers[structure.tier];
-      const scaledDamage = getScaledDamage(def, structure.tier);
-      return sum + scaledDamage * tier.rate;
-    }, 0);
-    const text = Number.isInteger(totalDps) ? `${totalDps}` : totalDps.toFixed(1);
-    dpsEl.textContent = text;
+    const totalDps = calcTotalDps(state);
+    dpsEl.textContent = formatStatNumber(totalDps);
   }
   if (bankEl) {
     const bankCount = state.structures.filter((structure) => structure.kind == "bank").length;
@@ -2716,6 +3500,7 @@ const updateHud = (state: GameState, runtime: Runtime) => {
   }
 
   updateNextRoundButton(state);
+  updateSpeedToggle(state);
 };
 
 const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
@@ -2853,7 +3638,7 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
   const towerSpecial = (towerId: string, tierIndex = 0) => {
     if (towerId === "splash") return "Splash";
     if (towerId === "slow") return tierIndex > 0 ? "Slow Splash" : "Slow";
-    if (towerId === "long") return "Far Range";
+    if (towerId === "long") return "Long Range";
     if (towerId === "wall") return "Blocker";
     return "None";
   };
@@ -2961,19 +3746,235 @@ const showToast = (message: string) => {
   window.setTimeout(() => toast.classList.remove("show"), 1600);
 };
 
-const showEndModal = (state: GameState) => {
+const requestRunAsUser = async () => {
+  const devvit = (globalThis as unknown as { devvit?: any }).devvit;
+  const appPermissionState = devvit?.appPermissionState;
+  if (!appPermissionState) {
+    return true;
+  }
+  if (!Array.isArray(appPermissionState.requestedScopes) || appPermissionState.requestedScopes.length === 0) {
+    return false;
+  }
+  switch (appPermissionState.consentStatus) {
+    case ConsentStatus.REVOKED:
+      return false;
+    case ConsentStatus.GRANTED:
+      if (
+        appPermissionState.requestedScopes.every((scope: number) =>
+          appPermissionState.grantedScopes?.includes(scope)
+        )
+      ) {
+        return true;
+      }
+      break;
+    default:
+      break;
+  }
+  const response = await emitEffect({
+    type: EffectType.EFFECT_CAN_RUN_AS_USER,
+    canRunAsUser: {
+      postId: devvit?.context?.postId ?? "",
+      appSlug: devvit?.context?.appName ?? "",
+      subredditId: devvit?.context?.subredditId ?? "",
+    },
+  });
+  return response?.consentStatus?.consentStatus === ConsentStatus.GRANTED;
+};
+
+const submitFeedback = async (text: string) => {
+  const payload: SubmitFeedbackRequest = { text };
+  try {
+    const response = await fetch("/api/submit-feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await response.json().catch(() => null)) as SubmitFeedbackResponse | null;
+    if (!response.ok || !data || data.status !== "ok") {
+      const message = (data as { message?: string } | null)?.message || "Comment failed";
+      showToast(message);
+      return { ok: false, message };
+    }
+    if (data.message) {
+      showToast(data.message);
+    } else {
+      showToast("Comment posted");
+    }
+    return { ok: true, asUser: data.asUser, authorName: data.authorName, message: data.message };
+  } catch {
+    showToast("Comment failed");
+    return { ok: false, message: "Comment failed" };
+  }
+};
+
+type EndSceneType = "victory" | "defeat";
+
+const getSceneConfig = (type: EndSceneType) => {
+  if (type === "victory") {
+    return {
+      sceneId: "victory-scene",
+      videoId: "victory-video",
+      skipId: "victory-skip",
+      url: VICTORY_VIDEO_URL,
+    };
+  }
+  return {
+    sceneId: "defeat-scene",
+    videoId: "defeat-video",
+    skipId: "defeat-skip",
+    url: DEFEAT_VIDEO_URL,
+  };
+};
+
+const hideEndScene = () => {
+  for (const type of ["victory", "defeat"] as EndSceneType[]) {
+    const { sceneId, videoId } = getSceneConfig(type);
+    const scene = document.getElementById(sceneId);
+    const video = document.getElementById(videoId) as HTMLVideoElement | null;
+    if (scene) {
+      scene.classList.remove("show");
+      scene.setAttribute("aria-hidden", "true");
+    }
+    if (video) {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }
+  if (endSceneTimer) {
+    window.clearTimeout(endSceneTimer);
+    endSceneTimer = null;
+  }
+  endSceneActive = false;
+};
+
+const showEndScene = (type: EndSceneType, onComplete: () => void) => {
+  const { sceneId, videoId, skipId, url } = getSceneConfig(type);
+  const scene = document.getElementById(sceneId);
+  const video = document.getElementById(videoId) as HTMLVideoElement | null;
+  const skip = document.getElementById(skipId) as HTMLButtonElement | null;
+  if (!scene || !video) {
+    onComplete();
+    return;
+  }
+
+  endSceneActive = true;
+  scene.classList.add("show");
+  scene.setAttribute("aria-hidden", "false");
+  if (!video.src) {
+    video.src = url;
+  }
+  video.currentTime = 0;
+  video.playbackRate = END_SCENE_PLAYBACK_RATE;
+  video.defaultPlaybackRate = END_SCENE_PLAYBACK_RATE;
+  const finish = () => {
+    if (!endSceneActive) return;
+    hideEndScene();
+    onComplete();
+  };
+  video.onended = finish;
+  if (skip) {
+    skip.onclick = finish;
+  }
+
+  const playPromise = video.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => {});
+  }
+  if (endSceneTimer) {
+    window.clearTimeout(endSceneTimer);
+  }
+  endSceneTimer = window.setTimeout(finish, END_SCENE_DURATION_MS);
+};
+
+const renderEndModal = (
+  state: GameState,
+  options?: { stats?: RunStats; skipRecord?: boolean }
+) => {
   const modal = document.getElementById("end-modal");
   const title = document.getElementById("end-title");
   const summary = document.getElementById("end-summary");
+  const breakdown = document.getElementById("score-breakdown");
+  const panels = document.getElementById("end-panels");
   if (!modal || !title || !summary) return;
 
-  const score = calcScore(state);
-  const wavesCleared = state.phase == "victory" ? MAX_WAVES : state.wave - 1;
+  const stats = options?.stats ?? getRunStats(state, runtime);
+  latestRunStats = stats;
+  latestRunStats = stats;
 
   title.textContent = state.phase == "victory" ? "Victory" : "Defeat";
-  summary.textContent = `Waves cleared: ${wavesCleared}. Score: ${score}.`;
+  summary.textContent = `Waves cleared: ${stats.waves}. Score: ${stats.score}.`;
+  if (panels) {
+    panels.style.display = "grid";
+  }
+  if (breakdown) {
+    const wavesScore = stats.waves * 1000;
+    const hpScore = stats.hp * 50;
+    const goldScore = Math.max(0, state.gold);
+    const total = wavesScore + hpScore + goldScore;
+    breakdown.innerHTML = `
+      <div class="score-line"><span>Waves Cleared (${stats.waves} x 1000)</span><strong>${wavesScore}</strong></div>
+      <div class="score-line"><span>HP Remaining (${stats.hp} x 50)</span><strong>${hpScore}</strong></div>
+      <div class="score-line"><span>Gold Remaining</span><strong>${goldScore}</strong></div>
+      <div class="score-line total"><span>Total Score</span><strong>${total}</strong></div>
+    `;
+  }
+
+  if (!endModalShown) {
+    endModalShown = true;
+    const weekKey = currentWeekKey || getClientWeekKey();
+    const shouldRecord = !options?.skipRecord;
+    const history = shouldRecord
+      ? state.weeklyRunRecorded
+        ? loadWeeklyRuns(weekKey)
+        : recordWeeklyRun(stats)
+      : loadWeeklyRuns(weekKey);
+    if (shouldRecord) {
+      state.weeklyRunRecorded = true;
+    }
+    renderHistory(history);
+    void loadWeeklyLeaderboard();
+    void loadDailyLeaderboard();
+  }
+  if (feedbackInput) {
+    feedbackInput.value = "";
+  }
+  if (feedbackSubmit) {
+    feedbackSubmit.disabled = false;
+    feedbackSubmit.textContent = "Post Comment";
+  }
+  if (feedbackStatus) {
+    feedbackStatus.textContent = "";
+    feedbackStatus.classList.remove("warning");
+  }
+  const playAgainButton = document.getElementById("play-again") as HTMLButtonElement | null;
+  if (playAgainButton) {
+    if (gameMode === "daily") {
+      playAgainButton.disabled = false;
+      playAgainButton.textContent = "Back to Training";
+    } else {
+      playAgainButton.disabled = false;
+      playAgainButton.textContent = "Restart";
+    }
+  }
   modal.setAttribute("aria-hidden", "false");
   modal.classList.add("show");
+
+  endSceneComplete = true;
+};
+
+const showEndModal = (state: GameState) => {
+  if ((state.phase === "defeat" || state.phase === "victory") && !endModalShown && !endSceneComplete) {
+    if (!endSceneActive) {
+      const type = state.phase === "victory" ? "victory" : "defeat";
+      showEndScene(type, () => {
+        endSceneComplete = true;
+        renderEndModal(state);
+      });
+    }
+    return;
+  }
+  renderEndModal(state);
 };
 
 const hideEndModal = () => {
@@ -2986,28 +3987,53 @@ const hideEndModal = () => {
 const submitScore = async (state: GameState) => {
   if (state.scoreSubmitted || state.scoreSubmitting) return;
   state.scoreSubmitting = true;
-  const score = calcScore(state);
-  const wavesCleared = state.phase == "victory" ? MAX_WAVES : state.wave - 1;
+  const stats = getRunStats(state, runtime);
+  let bestRun = stats;
+  if (gameMode === "standard") {
+    const weekKey = currentWeekKey || getClientWeekKey();
+    const runs = state.weeklyRunRecorded ? loadWeeklyRuns(weekKey) : recordWeeklyRun(stats);
+    state.weeklyRunRecorded = true;
+    bestRun = getBestWeeklyRun(runs) ?? stats;
+  }
+
+  if (gameMode === "daily" && dailyTestMode) {
+    showToast("Test mode: score not submitted");
+    state.scoreSubmitting = false;
+    state.scoreSubmitted = true;
+    return;
+  }
 
   const payload: SubmitScoreRequest = {
-    score,
-    waves: wavesCleared,
+    score: bestRun.score,
+    waves: bestRun.waves,
+    hp: bestRun.hp,
+    towers: bestRun.towers,
+    path: bestRun.path,
+    dps: bestRun.dps,
     seed: state.seed,
+    guestId: getGuestId(),
   };
 
   try {
-    const response = await fetch("/api/submit-score", {
+    const endpoint = gameMode === "daily" ? "/api/submit-daily-score" : "/api/submit-score";
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    if (response.ok) {
-      const data = (await response.json()) as SubmitScoreResponse;
-      if (data.status == "ok") {
-        state.scoreSubmitted = true;
+    const data = (await response.json().catch(() => null)) as SubmitScoreResponse | null;
+    if (!response.ok || !data || data.status !== "ok") {
+      const message = (data as { message?: string } | null)?.message || "Score submit failed";
+      showToast(message);
+      if (data && "debug" in data) {
+        console.warn("submit-score debug", (data as { debug?: unknown }).debug);
       }
+      return;
     }
+    state.scoreSubmitted = true;
+    void loadWeeklyLeaderboard();
+    void loadDailyLeaderboard();
   } catch {
     // Ignore score submission failures.
   }
@@ -3026,6 +4052,126 @@ let showPathPanel = true;
 let nextRoundButton: HTMLButtonElement | null = null;
 let showNextRound = true;
 let hasRendered = false;
+let endModalShown = false;
+let endSceneActive = false;
+let endSceneComplete = false;
+let endSceneTimer: number | null = null;
+let speedToggleButton: HTMLButtonElement | null = null;
+let speedMultiplier = 1;
+let weeklyLeaderboardEntries: LeaderboardResponse["entries"] = [];
+let weeklyLeaderboardSelf: LeaderboardResponse["self"] = null;
+let weeklyLeaderboardSort: { key: LeaderboardSortKey; dir: "asc" | "desc" } = {
+  key: "score",
+  dir: "desc",
+};
+let dailyLeaderboardEntries: DailyChallengeLeaderboardResponse["entries"] = [];
+let dailyLeaderboardSelf: DailyChallengeLeaderboardResponse["self"] = null;
+let dailyLeaderboardSort: { key: LeaderboardSortKey; dir: "asc" | "desc" } = {
+  key: "score",
+  dir: "desc",
+};
+let latestRunStats: RunStats | null = null;
+let currentWeekKey = "";
+let feedbackInput: HTMLTextAreaElement | null = null;
+let feedbackSubmit: HTMLButtonElement | null = null;
+let feedbackStatus: HTMLDivElement | null = null;
+let feedbackPermissionButton: HTMLButtonElement | null = null;
+let feedbackSubmitting = false;
+const urlParams = new URLSearchParams(window.location.search);
+const requestedMode = urlParams.get(MODE_PARAM) ?? "";
+const testDayParam = urlParams.get(TEST_DAY_PARAM) ?? "";
+let gameMode: GameMode = "standard";
+if (requestedMode === DAILY_MODE) {
+  gameMode = "daily";
+} else if (requestedMode === LEADERBOARD_MODE) {
+  gameMode = "leaderboard";
+} else {
+  try {
+    if (localStorage.getItem(LEADERBOARD_FLAG_KEY) === "1") {
+      gameMode = "leaderboard";
+      localStorage.removeItem(LEADERBOARD_FLAG_KEY);
+    }
+  } catch {
+    // Ignore local storage access errors.
+  }
+}
+const dailyTestDay = testDayParam.toLowerCase();
+let dailyTestMode = false;
+let dailyAttemptUsed = false;
+let dailyChallengeConfig: DailyChallengeConfig | null = null;
+
+const formatWeekRange = (weekStart?: string, weekEnd?: string) => {
+  if (!weekStart || !weekEnd) return "";
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: PST_TIMEZONE,
+    month: "short",
+    day: "numeric",
+  });
+  const startDate = new Date(`${weekStart}T00:00:00Z`);
+  const endDate = new Date(`${weekEnd}T00:00:00Z`);
+  const startLabel = formatter.format(startDate);
+  const endLabel = formatter.format(endDate);
+  return `${startLabel}–${endLabel}`;
+};
+
+const formatDailyDate = (date?: string) => {
+  if (!date) return "";
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: PST_TIMEZONE,
+    month: "short",
+    day: "numeric",
+  });
+  return formatter.format(new Date(`${date}T00:00:00Z`));
+};
+
+const getActiveMapOverrides = () => {
+  if (gameMode !== "daily" || !dailyChallengeConfig) return undefined;
+  return { spawn: dailyChallengeConfig.spawn, exit: dailyChallengeConfig.exit };
+};
+
+const loadDailyChallengeStatus = async (testDay?: string) => {
+  const guestId = getGuestId();
+  const testQuery = testDay ? `&testDay=${encodeURIComponent(testDay)}` : "";
+  const response = await fetch(
+    `/api/daily-challenge?ts=${Date.now()}&guestId=${guestId}${testQuery}`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    throw new Error("daily challenge status fetch failed");
+  }
+  return (await response.json()) as DailyChallengeStatusResponse;
+};
+
+const claimDailyChallenge = async (testDay?: string) => {
+  const guestId = getGuestId();
+  const response = await fetch("/api/daily-challenge/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guestId, testDay }),
+  });
+  if (!response.ok) {
+    throw new Error("daily challenge claim failed");
+  }
+  return (await response.json()) as DailyChallengeClaimResponse;
+};
+
+const applyDailyChallengeConfig = (
+  data: DailyChallengeStatusResponse | DailyChallengeClaimResponse
+) => {
+  const testMode = Boolean(data.testMode) || Boolean(dailyTestDay);
+  dailyChallengeConfig = {
+    date: data.date,
+    dayIndex: data.dayIndex,
+    seed: data.seed,
+    spawn: data.spawn,
+    exit: data.exit,
+    attemptUsed: data.attemptUsed,
+    testMode,
+  };
+  dailyTestMode = testMode;
+  dailyAttemptUsed = !testMode && data.attemptUsed;
+};
+
 
 const setupInteraction = () => {
   const canvas = runtime.view.canvas;
@@ -3197,11 +4343,35 @@ const setupInteraction = () => {
   const playAgainButton = document.getElementById("play-again") as HTMLButtonElement | null;
   const menuSelect = document.getElementById("menu-select") as HTMLSelectElement | null;
   const pathPanel = document.getElementById("path-panel");
+  speedToggleButton = document.getElementById("speed-toggle") as HTMLButtonElement | null;
   nextRoundButton = document.getElementById("next-round") as HTMLButtonElement | null;
+  feedbackInput = document.getElementById("feedback-input") as HTMLTextAreaElement | null;
+  feedbackSubmit = document.getElementById("feedback-submit") as HTMLButtonElement | null;
+  feedbackStatus = document.getElementById("feedback-status") as HTMLDivElement | null;
+  feedbackPermissionButton = document.getElementById("feedback-permission") as HTMLButtonElement | null;
+
+  const lockRestart = gameMode === "daily";
+  if (lockRestart && menuSelect) {
+    const restartOption = menuSelect.querySelector('option[value="restart"]');
+    if (restartOption) {
+      restartOption.disabled = true;
+      restartOption.textContent = "Restart (locked)";
+    }
+  }
 
   const updatePathPanelVisibility = () => {
     if (!pathPanel) return;
     pathPanel.style.display = showPathPanel ? "grid" : "none";
+  };
+
+  const endGameEarly = () => {
+    if (state.phase === "defeat" || state.phase === "victory") return;
+    state.phase = "defeat";
+    state.phaseTimer = 0;
+    state.spawnQueue = [];
+    state.spawnIndex = 0;
+    state.spawnCooldown = 0;
+    showEndModal(state);
   };
 
   const startNextRound = () => {
@@ -3212,8 +4382,79 @@ const setupInteraction = () => {
   };
 
   playAgainButton?.addEventListener("click", () => {
+    if (gameMode === "daily") {
+      window.location.assign("training.html");
+      return;
+    }
     hideEndModal();
-    initGame(state.seed);
+    initGame(state.seed, getActiveMapOverrides());
+  });
+
+  feedbackSubmit?.addEventListener("click", async () => {
+    if (!feedbackInput || !feedbackSubmit || feedbackSubmitting) return;
+    const text = feedbackInput.value.trim();
+    if (!text) {
+      showToast("Enter a comment first.");
+      return;
+    }
+    if (text.length > FEEDBACK_MAX_LENGTH) {
+      showToast("Comment too long.");
+      return;
+    }
+    feedbackSubmitting = true;
+    feedbackSubmit.disabled = true;
+    feedbackSubmit.textContent = "Posting...";
+    const result = await submitFeedback(text);
+    feedbackSubmitting = false;
+    feedbackSubmit.disabled = false;
+    feedbackSubmit.textContent = "Post Comment";
+    if (result.ok) {
+      feedbackInput.value = "";
+      if (feedbackStatus) {
+        if (result.asUser === false) {
+          const author = result.authorName || "the app";
+          feedbackStatus.textContent = `Posted as ${author}. Reinstall/reauthorize to post as you.`;
+          feedbackStatus.classList.add("warning");
+        } else {
+          feedbackStatus.textContent = "Posted as your account.";
+          feedbackStatus.classList.remove("warning");
+        }
+      }
+    } else if (feedbackStatus) {
+      feedbackStatus.textContent = result.message || "Comment failed.";
+      feedbackStatus.classList.add("warning");
+    }
+  });
+
+  feedbackPermissionButton?.addEventListener("click", async () => {
+    if (!feedbackStatus || !feedbackPermissionButton) return;
+    feedbackPermissionButton.disabled = true;
+    feedbackPermissionButton.textContent = "Requesting...";
+    try {
+      const granted = await requestRunAsUser();
+      if (granted) {
+        feedbackStatus.textContent = "Permission granted. Try posting again.";
+        feedbackStatus.classList.remove("warning");
+        showToast("Comment permission granted");
+      } else {
+        feedbackStatus.textContent = "Permission not granted. Please allow and try again.";
+        feedbackStatus.classList.add("warning");
+        showToast("Comment permission not granted");
+      }
+    } catch {
+      feedbackStatus.textContent = "Permission request unavailable.";
+      feedbackStatus.classList.add("warning");
+      showToast("Permission request failed");
+    } finally {
+      feedbackPermissionButton.disabled = false;
+      feedbackPermissionButton.textContent = "Grant Comment Permission";
+    }
+  });
+
+  speedToggleButton?.addEventListener("click", () => {
+    if (state.phase != "wave") return;
+    speedMultiplier = speedMultiplier === 1 ? 2 : 1;
+    updateSpeedToggle(state);
   });
 
   nextRoundButton?.addEventListener("click", () => {
@@ -3223,8 +4464,16 @@ const setupInteraction = () => {
 
   menuSelect?.addEventListener("change", () => {
     if (menuSelect.value == "restart") {
-      initGame(state.seed);
+      if (gameMode === "daily") {
+        menuSelect.value = "";
+        return;
+      }
+      initGame(state.seed, getActiveMapOverrides());
       menuSelect.value = "";
+    }
+    if (menuSelect.value == "end-game") {
+      menuSelect.value = "";
+      endGameEarly();
     }
     if (menuSelect.value == "toggle-path") {
       showPathPanel = !showPathPanel;
@@ -3240,6 +4489,9 @@ const setupInteraction = () => {
 
   updatePathPanelVisibility();
   updateNextRoundButton(state);
+  updateSpeedToggle(state);
+  setupLeaderboardSort("weekly-leaderboard-table", weeklyLeaderboardSort, renderWeeklyLeaderboard);
+  setupLeaderboardSort("daily-leaderboard-table", dailyLeaderboardSort, renderDailyLeaderboard);
 
 };
 
@@ -3254,7 +4506,8 @@ const tick = () => {
   }
 
   if (state.phase == "wave") {
-    updateWaveState(state, runtime, TICK_RATE);
+    const waveSpeed = speedMultiplier;
+    updateWaveState(state, runtime, TICK_RATE * waveSpeed);
   }
 
   updateHud(state, runtime);
@@ -3278,16 +4531,22 @@ const animate = (timestamp: number) => {
   if (!hasRendered) {
     hasRendered = true;
     updateNextRoundButton(state);
+    updateSpeedToggle(state);
   }
   window.requestAnimationFrame(animate);
 };
 
-const initGame = (seed: number) => {
+const initGame = (seed: number, overrides?: { spawn?: Point; exit?: Point }) => {
   state = makeInitialState(seed);
   activeSelection = null;
   activeBuildSelection = { kind: "none" };
+  endModalShown = false;
+  endSceneComplete = false;
+  endSceneActive = false;
+  hideEndScene();
+  speedMultiplier = 1;
   runtime.structureByCell.clear();
-  runtime.baseMap = createBaseMap();
+  runtime.baseMap = createBaseMap(overrides);
   runtime.airPath = buildAirPath(runtime.baseMap);
   rebuildPath(runtime);
   updateMapMarkers(runtime);
@@ -3296,6 +4555,20 @@ const initGame = (seed: number) => {
   updateBuildBar(state, activeBuildSelection);
   renderActionTray(state, null, activeBuildSelection);
   updateHud(state, runtime);
+};
+
+const showLeaderboardOnly = () => {
+  state.phase = "defeat";
+  state.wave = 1;
+  state.lives = 0;
+  state.gold = 0;
+  state.scoreSubmitted = true;
+  state.scoreSubmitting = false;
+  state.weeklyRunRecorded = true;
+  endSceneActive = false;
+  endSceneComplete = true;
+  hideEndScene();
+  renderEndModal(state, { stats: LEADERBOARD_PLACEHOLDER_STATS, skipRecord: true });
 };
 
 const loadDaily = async (): Promise<DailyResponse> => {
@@ -3310,13 +4583,33 @@ const boot = async () => {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement | null;
   if (!canvas) return;
 
-  runtime = createRuntime(canvas);
+  let dailySeed: number | null = null;
+  if (gameMode === "daily") {
+    try {
+      const dailyData = dailyTestDay
+        ? await loadDailyChallengeStatus(dailyTestDay)
+        : await claimDailyChallenge();
+      applyDailyChallengeConfig(dailyData);
+      if ("status" in dailyData && dailyData.status === "used") {
+        showToast("Daily attempt already used");
+      }
+      dailySeed = dailyData.seed;
+    } catch {
+      showToast("Daily challenge unavailable");
+    }
+  }
+
+  runtime = createRuntime(canvas, getActiveMapOverrides());
   resizeCanvas(runtime);
   window.addEventListener("resize", () => resizeCanvas(runtime));
 
   const daily = await loadDaily();
-  initGame(daily.seed);
+  const seed = dailySeed ?? daily.seed;
+  initGame(seed, getActiveMapOverrides());
 
+  if (gameMode === "leaderboard" || (gameMode === "daily" && dailyAttemptUsed && !dailyTestMode)) {
+    showLeaderboardOnly();
+  }
   setupInteraction();
   window.requestAnimationFrame(animate);
 };

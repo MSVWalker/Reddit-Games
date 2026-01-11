@@ -19,8 +19,9 @@
         <div class="stat-chip"><span class="icon">T</span><span id="timer-value">--</span></div>
       </div>
       <select class="menu-select" id="menu-select" aria-label="Game menu">
-        <option value="" selected>Menu</option>
+        <option value="" selected>Menu + Toggle</option>
         <option value="restart">Restart</option>
+        <option value="end-game">End Game</option>
         <option value="toggle-path">Toggle Path Panel</option>
         <option value="toggle-next">Toggle Next Round</option>
       </select>
@@ -42,6 +43,7 @@
 
     <div class="action-tray" id="action-tray" aria-hidden="true"></div>
     <button class="next-round" id="next-round" type="button">Next<br>Round</button>
+    <button class="speed-toggle hidden" id="speed-toggle" type="button">Speed x2</button>
 
     <nav class="build-bar" id="build-bar"></nav>
   </div>
@@ -50,10 +52,109 @@
     <div class="modal-card">
       <h2 id="end-title">Victory</h2>
       <p id="end-summary"></p>
+      <div class="score-breakdown" id="score-breakdown"></div>
+      <div class="end-panels" id="end-panels">
+        <section class="end-section" id="end-daily-leaderboard">
+          <div class="end-section-head">
+            <div class="end-section-title-group">
+              <div class="end-section-title">Daily Challenge Leaderboard</div>
+              <div class="end-section-date" id="daily-leaderboard-date">--</div>
+            </div>
+            <div class="end-section-subtitle">All players today</div>
+          </div>
+          <div class="end-table-wrap">
+            <table class="end-table" id="daily-leaderboard-table">
+              <thead>
+                <tr>
+                  <th class="sortable col-player" data-sort="name">Player</th>
+                  <th class="sortable num" data-sort="score">Score</th>
+                  <th class="sortable num" data-sort="hp" title="HP remaining at end of best score run.">HP</th>
+                  <th class="sortable num" data-sort="waves" title="Waves cleared in best score run.">Wave</th>
+                  <th class="sortable num" data-sort="towers" title="Number of towers placed in best score run.">Towers</th>
+                  <th class="sortable num" data-sort="path" title="Path length at end of best score run.">Path</th>
+                  <th class="sortable num" data-sort="dps" title="Total DPS at end of best score run.">DPS</th>
+                  <th class="sortable num" data-sort="attempts" title="Attempts today.">Attempts</th>
+                </tr>
+              </thead>
+              <tbody id="daily-leaderboard-rows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="end-section" id="end-weekly-leaderboard">
+          <div class="end-section-head">
+            <div class="end-section-title-group">
+              <div class="end-section-title">Weekly Leaderboard</div>
+              <div class="end-section-date" id="weekly-leaderboard-date">--</div>
+            </div>
+            <div class="end-section-subtitle">All players this week</div>
+          </div>
+          <div class="end-table-wrap">
+            <table class="end-table" id="weekly-leaderboard-table">
+              <thead>
+                <tr>
+                  <th class="sortable col-player" data-sort="name">Player</th>
+                  <th class="sortable num" data-sort="score">Score</th>
+                  <th class="sortable num" data-sort="hp" title="HP remaining at end of best score run.">HP</th>
+                  <th class="sortable num" data-sort="waves" title="Waves cleared in best score run.">Wave</th>
+                  <th class="sortable num" data-sort="towers" title="Number of towers placed in best score run.">Towers</th>
+                  <th class="sortable num" data-sort="path" title="Path length at end of best score run.">Path</th>
+                  <th class="sortable num" data-sort="dps" title="Total DPS at end of best score run.">DPS</th>
+                  <th class="sortable num" data-sort="attempts" title="Attempts this week.">Attempts</th>
+                </tr>
+              </thead>
+              <tbody id="weekly-leaderboard-rows"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="end-section" id="end-history">
+          <div class="end-section-head">
+            <div class="end-section-title">This Week Runs</div>
+          </div>
+          <div class="end-table-wrap">
+            <table class="end-table" id="history-table">
+              <thead>
+                <tr>
+                  <th class="col-player">Run</th>
+                  <th class="num">Score</th>
+                  <th class="num" title="HP remaining at end of that run.">HP</th>
+                  <th class="num" title="Waves cleared in that run.">Wave</th>
+                  <th class="num" title="Number of towers placed in that run.">Towers</th>
+                  <th class="num" title="Path length at end of that run.">Path</th>
+                  <th class="num" title="Total DPS at end of that run.">DPS</th>
+                </tr>
+              </thead>
+              <tbody id="history-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <section class="end-section end-feedback" id="end-feedback">
+        <div class="end-section-head">
+          <div class="end-section-title">Leave a Comment</div>
+          <div class="end-section-subtitle">Posts to the feedback thread</div>
+        </div>
+        <textarea id="feedback-input" class="feedback-input" rows="3" maxlength="500"
+          placeholder="Share feedback or ideas (max 500 characters)."></textarea>
+        <div class="feedback-actions">
+          <button class="hud-btn" id="feedback-permission" type="button">Grant Comment Permission</button>
+          <button class="hud-btn" id="feedback-submit" type="button">Post Comment</button>
+        </div>
+        <div class="feedback-status" id="feedback-status"></div>
+      </section>
       <div class="modal-actions">
         <button class="hud-btn primary" id="play-again">Restart</button>
       </div>
     </div>
+  </div>
+
+  <div class="end-scene" id="defeat-scene" aria-hidden="true">
+    <video class="end-video" id="defeat-video" muted playsinline preload="auto"></video>
+    <button class="end-skip" id="defeat-skip" type="button">Skip Scene</button>
+  </div>
+
+  <div class="end-scene" id="victory-scene" aria-hidden="true">
+    <video class="end-video" id="victory-video" muted playsinline preload="auto"></video>
+    <button class="end-skip" id="victory-skip" type="button">Skip Scene</button>
   </div>
 
   <script type="module" src="game/game.ts" defer></script>

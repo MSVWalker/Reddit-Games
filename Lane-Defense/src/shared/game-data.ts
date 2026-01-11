@@ -71,7 +71,7 @@ export interface WaveDefinition {
   isBossWave?: boolean;
 }
 
-export const GRID_WIDTH = 8;
+export const GRID_WIDTH = 9;
 export const GRID_HEIGHT = 15;
 export const PATH_THICKNESS = 1;
 export const MAX_WAVES = 10;
@@ -79,7 +79,7 @@ export const MAX_WAVES = 10;
 export const TARGET_MODES: TargetMode[] = ["first", "last", "strong", "weak"];
 
 export const GAME_CONFIG: GameConfig = {
-  startGold: 640,
+  startGold: 700,
   startLives: 20,
   baseHpMult: 1.5,
   baseSpeedMult: 1.0,
@@ -101,7 +101,7 @@ export const TOWER_DEFS: TowerDefinition[] = [
     id: "basic",
     name: "Arrow Turret",
     description: "Reliable bolts with steady reach.",
-    color: "#7a4d2b",
+    color: "#e9ad5a",
     canHitGround: true,
     canHitAir: false,
     targetPriority: "ground",
@@ -180,7 +180,7 @@ export const TOWER_DEFS: TowerDefinition[] = [
     id: "long",
     name: "Ballista",
     description: "Long-range bolts pierce hulls.",
-    color: "#7a7f87",
+    color: "#d3dee9",
     canHitGround: true,
     canHitAir: true,
     targetPriority: "air",
