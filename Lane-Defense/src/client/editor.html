@@ -37,29 +37,24 @@
       </div>
 
       <aside class="editor-sidebar">
+        <div class="editor-stats editor-stats-top">
+          <div><span>Board Tiles</span><strong id="path-count">0</strong></div>
+        </div>
         <label>
           Title
           <input type="text" id="map-title" placeholder="Map title" maxlength="60" />
         </label>
-        <label>
-          Description
-          <textarea id="map-description" rows="3" maxlength="200"
-            placeholder="Description (optional)."></textarea>
-        </label>
-        <label>
-          HP Multiplier
-          <select id="hp-mult"></select>
-        </label>
-        <label>
-          Speed Multiplier
-          <select id="speed-mult"></select>
-        </label>
-        <div class="editor-stats">
-          <div><span>Board Tiles</span><strong id="path-count">0</strong></div>
-          <div><span>Spawn</span><strong id="spawn-pos">--</strong></div>
-          <div><span>Exit</span><strong id="exit-pos">--</strong></div>
+        <div class="editor-row">
+          <label>
+            HP Multiplier
+            <select id="hp-mult"></select>
+          </label>
+          <label>
+            Speed Multiplier
+            <select id="speed-mult"></select>
+          </label>
         </div>
-        <div class="editor-actions">
+        <div class="editor-actions editor-row">
           <button class="editor-primary" id="save-draft">Save Draft</button>
           <button class="editor-primary" id="publish-map">Publish</button>
         </div>

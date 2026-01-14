@@ -153,8 +153,12 @@ body {
   font-size: 0.58rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  transform: translate(-6px, 0px);
-  margin-top: calc(52px + env(safe-area-inset-top));
+  position: fixed;
+  left: 16px;
+  top: calc(62px + env(safe-area-inset-top));
+  transform: translate(0, 0);
+  margin-top: 0;
+  z-index: 5;
   box-shadow: 0 8px 16px rgba(6, 14, 22, 0.35);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
@@ -337,7 +341,7 @@ body:not(.coop-mode) .contract-picker {
   display: none;
   position: absolute;
   left: 50%;
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(40px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   align-items: center;
   justify-content: center;
@@ -365,9 +369,16 @@ body:not(.coop-mode) .contract-picker {
 
 @media (max-width: 520px) {
   .action-controls {
-    bottom: calc(82px + env(safe-area-inset-bottom));
+    bottom: calc(34px + env(safe-area-inset-bottom));
     width: min(92vw, 320px);
     padding: 6px 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .path-panel {
+    top: calc(54px + env(safe-area-inset-top));
+    left: 12px;
   }
 }
 
@@ -599,7 +610,7 @@ body:not(.coop-mode) .contract-picker {
   position: fixed;
   left: 8px;
   right: 8px;
-  bottom: calc(4px + env(safe-area-inset-bottom));
+  bottom: calc(2px + env(safe-area-inset-bottom));
   z-index: 6;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -620,11 +631,11 @@ body:not(.coop-mode) .contract-picker {
   }
 
   .build-bar {
-    bottom: calc(8px + env(safe-area-inset-bottom));
+    bottom: calc(4px + env(safe-area-inset-bottom));
   }
 
   .scene {
-    margin-top: -95px;
+    margin-top: -85px;
   }
 }
 

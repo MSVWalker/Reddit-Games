@@ -28,7 +28,6 @@ const backButton = document.getElementById("back-training") as HTMLButtonElement
 const hpSelect = document.getElementById("hp-mult") as HTMLSelectElement | null;
 const speedSelect = document.getElementById("speed-mult") as HTMLSelectElement | null;
 const titleInput = document.getElementById("map-title") as HTMLInputElement | null;
-const descInput = document.getElementById("map-description") as HTMLTextAreaElement | null;
 const saveButton = document.getElementById("save-draft") as HTMLButtonElement | null;
 const publishButton = document.getElementById("publish-map") as HTMLButtonElement | null;
 const statusEl = document.getElementById("editor-status");
@@ -81,7 +80,7 @@ const getGuestId = () => {
 
 const buildMultiplierOptions = (select: HTMLSelectElement | null) => {
   if (!select) return;
-  for (let value = 0.8; value <= 1.4 + 0.001; value += 0.05) {
+  for (let value = 0.5; value <= 3 + 0.001; value += 0.25) {
     const option = document.createElement("option");
     option.value = value.toFixed(2);
     option.textContent = `${value.toFixed(2)}x`;
@@ -266,7 +265,7 @@ const computePathLength = (start: Point, end: Point) => {
 const saveMap = async (publish: boolean) => {
   if (!validateMap()) return;
   const title = titleInput?.value.trim() || "";
-  const description = descInput?.value.trim() || "";
+  const description = "";
   if (title.length < 1) {
     setStatus("Title is required.", true);
     showValidationBadge("Title required", true);

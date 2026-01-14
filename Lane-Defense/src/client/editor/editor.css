@@ -147,9 +147,16 @@ body.editor-body {
   border: 1px solid var(--outline);
   border-radius: 14px;
   padding: 10px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   align-content: start;
+}
+
+.editor-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .editor-sidebar label {
@@ -184,9 +191,19 @@ body.editor-body {
   justify-content: space-between;
 }
 
+.editor-stats-top {
+  text-align: center;
+}
+
+.editor-stats-top div {
+  justify-content: center;
+  gap: 8px;
+}
+
 .editor-actions {
   display: grid;
   gap: 6px;
+  margin-top: auto;
 }
 
 .editor-primary {
@@ -211,5 +228,37 @@ body.editor-body {
 @media (max-width: 820px) {
   .editor-content {
     grid-template-columns: 1fr;
+  }
+
+  .editor-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.editor-body {
+    overflow: hidden;
+  }
+
+  .editor-shell {
+    height: 100dvh;
+  }
+
+  .editor-content {
+    min-height: 0;
+  }
+
+  .editor-canvas-wrap {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 520px) {
+  .editor-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .editor-primary {
+    font-size: 0.65rem;
+    padding: 7px 8px;
   }
 }

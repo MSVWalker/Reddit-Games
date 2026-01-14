@@ -856,7 +856,7 @@ const createRuntime = (
       width: 0,
       height: 0,
       cameraTarget,
-      zoom: 0.95,
+      zoom: 0.97,
       minZoom: 0.7,
       maxZoom: 3.2,
       baseDistance: 1,
