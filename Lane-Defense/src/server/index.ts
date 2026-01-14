@@ -209,6 +209,26 @@ const getMapKeys = (mapId: string) => {
   };
 };
 
+const getMapRaw = async (mapId: string) => {
+  const { mapKey } = getMapKeys(mapId);
+  const legacyKeys = [`map:${MAP_VERSION}:${mapId}`, `map:${mapId}`];
+  let raw = await redis.get(mapKey);
+  let usedKey = mapKey;
+  if (!raw) {
+    for (const key of legacyKeys) {
+      raw = await redis.get(key);
+      if (raw) {
+        usedKey = key;
+        break;
+      }
+    }
+  }
+  if (raw && usedKey !== mapKey) {
+    await redis.set(mapKey, raw);
+  }
+  return { raw, usedKey, mapKey, legacyKeys };
+};
+
 const getPostMapKey = (postId: string) => `post-map:${MAP_VERSION}:${postId}`;
 
 const getMapIndexKeys = () => ({
@@ -387,6 +407,25 @@ const buildMapPreviewSvg = (map: MapSaveRequest["map"]) => {
 </svg>`;
   const base64 = Buffer.from(svg).toString("base64");
   return `data:image/svg+xml;base64,${base64}`;
+};
+
+const extractMapIdFromPost = async (postId: string) => {
+  if (!postId) return "";
+  const normalizedPostId = postId.startsWith("t3_") ? postId : `t3_${postId}`;
+  try {
+    const post = await reddit.getPostById(normalizedPostId as `t3_${string}`);
+    const postData = await post.getPostData();
+    const mapIdFromData = typeof postData?.mapId === "string" ? postData.mapId : "";
+    if (mapIdFromData) return mapIdFromData;
+    const body = post.body ?? "";
+    const match =
+      body.match(/Map ID:\s*(map_[a-z0-9]+_[a-z0-9]+)/i) ??
+      body.match(/(map_[a-z0-9]+_[a-z0-9]+)/i);
+    return match?.[1] ?? "";
+  } catch (error) {
+    console.warn("Post map lookup failed", error);
+    return "";
+  }
 };
 
 const normalizeMapTitle = (title: string) =>
@@ -918,6 +957,7 @@ router.post<{}, MapSaveResponse | { status: string; message: string }, MapSaveRe
         subredditName,
         title: `Map: ${map.title}`,
         runAs: "USER" as const,
+        postData: { mapId },
         userGeneratedContent: {
           text: `${map.description}\n\nMap ID: ${mapId}\n\nPreview:\n\n\`\`\`\n${preview}\n\`\`\``,
           imageUrls: previewImageUrl ? [previewImageUrl] : [],
@@ -999,8 +1039,7 @@ router.get<{}, MapListResponse | { status: string; message: string }>(
             ? (id as { member: string }).member
             : "";
         if (!mapId) continue;
-        const { mapKey } = getMapKeys(mapId);
-        const raw = await redis.get(mapKey);
+        const { raw } = await getMapRaw(mapId);
         if (!raw) continue;
         const map = JSON.parse(raw) as MapData;
         if (!map.published) continue;
@@ -1026,9 +1065,8 @@ router.get<{}, MapDetailResponse | { status: string; message: string }>(
   "/api/maps/:id",
   async (req, res): Promise<void> => {
     const mapId = req.params.id;
-    const { mapKey } = getMapKeys(mapId);
     try {
-      const raw = await redis.get(mapKey);
+      const { raw } = await getMapRaw(mapId);
       if (!raw) {
         res.status(404).json({ status: "error", message: "Map not found" });
         return;
@@ -1044,17 +1082,107 @@ router.get<{}, MapDetailResponse | { status: string; message: string }>(
 
 router.get<{}, MapDetailResponse | { status: string; message: string }>(
   "/api/maps/from-post",
-  async (_req, res): Promise<void> => {
-    const postId = context.postId;
-    if (!postId) {
-      res.status(400).json({ status: "error", message: "Post context unavailable" });
-      return;
-    }
-    const normalizedPostId = postId.startsWith("t3_") ? postId : `t3_${postId}`;
-    const postMapKey = getPostMapKey(postId);
-    const postMapKeyNormalized = getPostMapKey(normalizedPostId);
+  async (req, res): Promise<void> => {
+    const queryMapId = typeof req.query?.mapId === "string" ? req.query.mapId : "";
+    const queryPostId = typeof req.query?.postId === "string" ? req.query.postId : "";
+    const postId = queryPostId || context.postId || "";
+    const normalizedPostId = postId ? (postId.startsWith("t3_") ? postId : `t3_${postId}`) : "";
+    const postMapKey = postId ? getPostMapKey(postId) : "";
+    const postMapKeyNormalized = normalizedPostId ? getPostMapKey(normalizedPostId) : "";
+    const recoverMapIdFromIndex = async () => {
+      const { createdKey } = getMapIndexKeys();
+      const ids = await redis.zRange(createdKey, 0, 499, { reverse: true, by: "rank" });
+      for (const entry of ids) {
+        const mapId =
+          typeof entry === "string"
+            ? entry
+            : typeof (entry as { member?: string }).member === "string"
+            ? (entry as { member: string }).member
+            : "";
+        if (!mapId) continue;
+        const { raw } = await getMapRaw(mapId);
+        if (!raw) continue;
+        const map = JSON.parse(raw) as MapData;
+        if (normalizedPostId && map.postId === normalizedPostId) {
+          return mapId;
+        }
+      }
+      return "";
+    };
     try {
-      const mapId = (await redis.get(postMapKey)) ?? (await redis.get(postMapKeyNormalized));
+      if (queryMapId) {
+        const { raw, mapKey, legacyKeys, usedKey } = await getMapRaw(queryMapId);
+        if (!raw) {
+          res.status(404).json({
+            status: "error",
+            message: "Map not found",
+            debug: {
+              postId,
+              normalizedPostId,
+              mapId: queryMapId,
+              source: "query",
+              mapKey,
+              legacyKeys,
+            },
+          });
+          return;
+        }
+        const map = JSON.parse(raw) as MapData;
+        if (postMapKey) {
+          await redis.set(postMapKey, queryMapId);
+          if (postMapKeyNormalized && postMapKeyNormalized !== postMapKey) {
+            await redis.set(postMapKeyNormalized, queryMapId);
+          }
+        }
+        res.json({
+          type: "map",
+          map,
+          debug: {
+            postId,
+            normalizedPostId,
+            mapId: queryMapId,
+            source: "query",
+            mapKey,
+            usedKey,
+          },
+        });
+        return;
+      }
+
+      if (!postId) {
+        res.status(400).json({ status: "error", message: "Post context unavailable" });
+        return;
+      }
+
+      let mapId = (await redis.get(postMapKey)) ?? (await redis.get(postMapKeyNormalized));
+      let recovered = false;
+      let source: "cache" | "post" | "index" = "cache";
+      if (!mapId) {
+        mapId = await extractMapIdFromPost(normalizedPostId);
+        if (mapId) {
+          recovered = true;
+          source = "post";
+          if (postMapKey) {
+            await redis.set(postMapKey, mapId);
+            if (postMapKeyNormalized && postMapKeyNormalized !== postMapKey) {
+              await redis.set(postMapKeyNormalized, mapId);
+            }
+          }
+        }
+      }
+      if (!mapId) {
+        mapId = await recoverMapIdFromIndex();
+        if (mapId) {
+          recovered = true;
+          source = "index";
+          if (postMapKey) {
+            await redis.set(postMapKey, mapId);
+            if (postMapKeyNormalized && postMapKeyNormalized !== postMapKey) {
+              await redis.set(postMapKeyNormalized, mapId);
+            }
+          }
+        }
+      }
       if (!mapId) {
         res.status(404).json({
           status: "error",
@@ -1063,8 +1191,7 @@ router.get<{}, MapDetailResponse | { status: string; message: string }>(
         });
         return;
       }
-      const { mapKey } = getMapKeys(mapId);
-      const raw = await redis.get(mapKey);
+      const { raw, usedKey } = await getMapRaw(mapId);
       if (!raw) {
         res.status(404).json({
           status: "error",
@@ -1074,11 +1201,33 @@ router.get<{}, MapDetailResponse | { status: string; message: string }>(
         return;
       }
       const map = JSON.parse(raw) as MapData;
-      res.json({ type: "map", map });
+      res.json({
+        type: "map",
+        map,
+        debug: { postId, normalizedPostId, mapId, recovered, source, usedKey },
+      });
     } catch (error) {
       console.error("Map post lookup error", error);
       res.status(500).json({ status: "error", message: "Failed to load map" });
     }
+  }
+);
+
+router.get<{}, { type: string; mapId?: string; postId?: string; message?: string }>(
+  "/api/maps/post-map-id",
+  async (req, res): Promise<void> => {
+    const queryPostId = typeof req.query?.postId === "string" ? req.query.postId : "";
+    const postId = queryPostId || context.postId || "";
+    if (!postId) {
+      res.status(400).json({ type: "post-map-id", message: "Post context unavailable" });
+      return;
+    }
+    const mapId = await extractMapIdFromPost(postId);
+    if (!mapId) {
+      res.status(404).json({ type: "post-map-id", message: "Map id not found" });
+      return;
+    }
+    res.json({ type: "post-map-id", mapId, postId });
   }
 );
 
@@ -1093,7 +1242,7 @@ router.post<{}, MapPlayResponse | { status: string; message: string }, MapPlayRe
     const { mapKey, playsKey } = getMapKeys(mapId);
     const { playsKey: playsIndexKey, plays7dKey } = getMapIndexKeys();
     try {
-      const raw = await redis.get(mapKey);
+      const { raw } = await getMapRaw(mapId);
       if (!raw) {
         res.status(404).json({ type: "map-play", status: "error", message: "Map not found" });
         return;
@@ -1777,10 +1926,13 @@ router.get("/api/debug/post-map", async (_req, res): Promise<void> => {
   ]);
   const mapId = mapIdRaw ?? mapIdNormalized ?? "";
   let mapExists = false;
+  let usedKey: string | null = null;
   if (mapId) {
-    const { mapKey } = getMapKeys(mapId);
-    mapExists = Boolean(await redis.get(mapKey));
+    const { raw, usedKey: resolvedKey } = await getMapRaw(mapId);
+    mapExists = Boolean(raw);
+    usedKey = resolvedKey ?? null;
   }
+  const mapIdFromPost = normalizedPostId ? await extractMapIdFromPost(normalizedPostId) : "";
   res.json({
     type: "debug-post-map",
     postId: postId || null,
@@ -1789,6 +1941,8 @@ router.get("/api/debug/post-map", async (_req, res): Promise<void> => {
     postMapKeyNormalized: postMapKeyNormalized || null,
     mapId: mapId || null,
     mapExists,
+    mapIdFromPost: mapIdFromPost || null,
+    usedKey,
     subreddit: context.subredditName || null,
   });
 });

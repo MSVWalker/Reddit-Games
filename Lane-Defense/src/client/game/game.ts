@@ -4903,7 +4903,32 @@ const loadMapById = async (mapId: string) => {
 };
 
 const loadMapFromPost = async () => {
-  const response = await fetch(`/api/maps/from-post?ts=${Date.now()}`, { cache: "no-store" });
+  const postId = devvit?.context?.postId ?? "";
+  const postData =
+    (devvit as { context?: { postData?: Record<string, unknown> } } | undefined)?.context
+      ?.postData ?? null;
+  const mapIdFromContext = typeof postData?.mapId === "string" ? postData.mapId : "";
+  if (mapIdFromContext) {
+    return await loadMapById(mapIdFromContext);
+  }
+
+  const postIdParams = new URLSearchParams();
+  if (postId) postIdParams.set("postId", postId);
+  const mapIdResponse = await fetch(`/api/maps/post-map-id?${postIdParams.toString()}`, {
+    cache: "no-store",
+  });
+  if (mapIdResponse.ok) {
+    const mapIdData = (await mapIdResponse.json()) as { type?: string; mapId?: string };
+    if (mapIdData?.mapId) {
+      return await loadMapById(mapIdData.mapId);
+    }
+  }
+
+  const params = new URLSearchParams({ ts: Date.now().toString() });
+  if (postId) params.set("postId", postId);
+  const response = await fetch(`/api/maps/from-post?${params.toString()}`, {
+    cache: "no-store",
+  });
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
     console.warn("post map fetch failed", response.status, errorBody);
