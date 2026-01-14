@@ -1,0 +1,141 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Cormorant+Garamond:wght@400;600&display=swap");
+
+:root {
+  color-scheme: light;
+  --ink: #f7f2ea;
+  --ink-muted: rgba(247, 242, 234, 0.75);
+  --panel: rgba(14, 33, 52, 0.6);
+  --outline: rgba(214, 232, 255, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.browser-body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Cormorant Garamond", "Cinzel", serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top, rgba(32, 75, 110, 0.4), transparent 60%), #0a2033;
+}
+
+.browser-shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 10px;
+  padding: 12px;
+}
+
+.browser-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.browser-header h1 {
+  margin: 0;
+  font-family: "Cinzel", serif;
+  font-size: 1.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.browser-header p {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.browser-link {
+  background: transparent;
+  border: 1px solid var(--outline);
+  color: var(--ink);
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-family: "Cinzel", serif;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.browser-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tab-button {
+  background: rgba(19, 52, 80, 0.7);
+  border: 1px solid var(--outline);
+  color: var(--ink);
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-family: "Cinzel", serif;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  background: rgba(89, 150, 210, 0.8);
+}
+
+.browser-list {
+  background: var(--panel);
+  border-radius: 14px;
+  border: 1px solid var(--outline);
+  padding: 8px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.map-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.6fr 0.6fr 0.7fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(10, 25, 38, 0.45);
+  font-size: 0.75rem;
+}
+
+.map-row strong {
+  font-family: "Cinzel", serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-play {
+  border-radius: 999px;
+  border: 1px solid rgba(178, 214, 255, 0.9);
+  background: linear-gradient(140deg, #4c74c9, #2f8cc9 55%, #6fa9e8 100%);
+  color: #f7f4ff;
+  padding: 6px 10px;
+  font-family: "Cinzel", serif;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.browser-status {
+  min-height: 18px;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+@media (max-width: 640px) {
+  .map-row {
+    grid-template-columns: 1.4fr 0.7fr 0.7fr 0.7fr auto;
+  }
+
+  .map-row span:nth-child(5) {
+    display: none;
+  }
+}

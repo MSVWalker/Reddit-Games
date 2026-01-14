@@ -2,9 +2,12 @@ const GUEST_ID_KEY = "lane-defense:guest-id";
 const startButton = document.getElementById("start-training") as HTMLButtonElement | null;
 const dailyButton = document.getElementById("start-daily") as HTMLButtonElement | null;
 const leaderboardButton = document.getElementById("see-leaderboard") as HTMLButtonElement | null;
-const testButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-test-day]")
-);
+const editorButton = document.getElementById("open-editor") as HTMLButtonElement | null;
+const browserButton = document.getElementById("open-browser") as HTMLButtonElement | null;
+const coopQuickButton = document.getElementById("coop-quick") as HTMLButtonElement | null;
+const coopCreateButton = document.getElementById("coop-create") as HTMLButtonElement | null;
+const coopJoinButton = document.getElementById("coop-join") as HTMLButtonElement | null;
+const testButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-test-day]"));
 
 const generateGuestId = () => {
   const bytes = new Uint8Array(8);
@@ -87,6 +90,70 @@ testButtons.forEach((button) => {
 leaderboardButton?.addEventListener("click", (event) => {
   event.preventDefault();
   window.location.assign("game.html?mode=leaderboard");
+});
+
+editorButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  window.location.assign("editor.html");
+});
+
+browserButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  window.location.assign("browser.html");
+});
+
+const joinCoop = async (payload: { mode: "invite" | "queue"; runId?: string }) => {
+  const response = await fetch("/api/coop/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, guestId: getGuestId() }),
+  });
+  if (!response.ok) {
+    throw new Error("coop join failed");
+  }
+  const data = (await response.json()) as {
+    status?: string;
+    runId?: string;
+    role?: "builder" | "wizard";
+    message?: string;
+  };
+  if (data.status !== "ok" || !data.runId || !data.role) {
+    throw new Error(data.message || "co-op unavailable");
+  }
+  return data;
+};
+
+coopQuickButton?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await joinCoop({ mode: "queue" });
+    window.location.assign(`game.html?mode=coop&runId=${encodeURIComponent(data.runId)}&role=${data.role}`);
+  } catch (error) {
+    alert((error as Error).message || "Co-op unavailable.");
+  }
+});
+
+coopCreateButton?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await joinCoop({ mode: "invite" });
+    alert(`Invite code: ${data.runId}`);
+    window.location.assign(`game.html?mode=coop&runId=${encodeURIComponent(data.runId)}&role=${data.role}`);
+  } catch (error) {
+    alert((error as Error).message || "Co-op unavailable.");
+  }
+});
+
+coopJoinButton?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  const code = prompt("Enter invite code");
+  if (!code) return;
+  try {
+    const data = await joinCoop({ mode: "invite", runId: code.trim() });
+    window.location.assign(`game.html?mode=coop&runId=${encodeURIComponent(data.runId)}&role=${data.role}`);
+  } catch (error) {
+    alert((error as Error).message || "Co-op unavailable.");
+  }
 });
 
 void loadDailyStatus();

@@ -14,7 +14,14 @@ import {
   type TowerDefinition,
   type DamageType,
 } from "../../shared/game-data";
-import { nextRng, type RngState } from "../../shared/rng";
+import {
+  CONTRACTS,
+  SPELLS,
+  type ContractDefinition,
+  type SpellDefinition,
+  type SpellId,
+} from "../../shared/coop-data";
+import { nextRng, seedFromString, type RngState } from "../../shared/rng";
 import type {
   DailyResponse,
   DailyChallengeClaimResponse,
@@ -22,6 +29,15 @@ import type {
   DailyChallengeStatusResponse,
   GridPoint,
   LeaderboardResponse,
+  MapData,
+  MapDetailResponse,
+  MapPlayRequest,
+  MapRunRequest,
+  CoopEvent,
+  CoopEventRequest,
+  CoopJoinRequest,
+  CoopJoinResponse,
+  CoopRunResponse,
   SubmitFeedbackRequest,
   SubmitFeedbackResponse,
   SubmitScoreRequest,
@@ -32,7 +48,7 @@ import { ConsentStatus } from "@devvit/protos/json/reddit/devvit/app_permission/
 import { EffectType } from "@devvit/protos/json/devvit/ui/effects/v1alpha/effect.js";
 
 type Phase = "prep" | "wave" | "victory" | "defeat";
-type GameMode = "standard" | "daily" | "leaderboard";
+type GameMode = "standard" | "daily" | "leaderboard" | "ugc" | "coop";
 
 type BuildSelection =
   | { kind: "tower"; towerId: string }
@@ -44,6 +60,7 @@ type Point = GridPoint;
 interface Cell {
   terrain: "cliff" | "ground";
   buildable: boolean;
+  tileType: "path" | "buildable" | "blocked";
 }
 
 interface BaseMap {
@@ -54,18 +71,31 @@ interface BaseMap {
   cells: Cell[];
 }
 
-const SPAWN_OFFSET = 1;
-const EXIT_OFFSET = 1;
+const SPAWN_OFFSET = 0;
+const EXIT_OFFSET = 0;
+const PRIMARY_MAP_VISUAL_OFFSET = 1;
 const END_SCENE_DURATION_MS = 6000;
 const END_SCENE_PLAYBACK_RATE = 2;
 const FEEDBACK_MAX_LENGTH = 500;
 const MODE_PARAM = "mode";
+const MAP_ID_PARAM = "mapId";
+const ROLE_PARAM = "role";
+const RUN_ID_PARAM = "runId";
 const TEST_DAY_PARAM = "testDay";
 const DAILY_MODE = "daily";
 const LEADERBOARD_MODE = "leaderboard";
+const UGC_MODE = "ugc";
+const COOP_MODE = "coop";
 const LEADERBOARD_FLAG_KEY = "lane-defense:leaderboard-only";
 const DEFEAT_VIDEO_URL = new URL("./defeat-animation.mp4", import.meta.url).href;
 const VICTORY_VIDEO_URL = new URL("./victory-animation.mp4", import.meta.url).href;
+const MAP_TILE_BLOCKED = 0;
+const MAP_TILE_BUILDABLE = 1;
+const MAP_TILE_PATH = 2;
+const WIZARD_MAX_MANA = 100;
+const WIZARD_START_MANA = 50;
+const WIZARD_REGEN = 6;
+const CONTRACT_PICK_COUNT = 2;
 
 const getEdgeOffset = (baseMap: BaseMap, point: Point, distance: number) => {
   if (point.y <= 0) return { x: 0, y: -distance };
@@ -75,16 +105,16 @@ const getEdgeOffset = (baseMap: BaseMap, point: Point, distance: number) => {
   return { x: 0, y: -distance };
 };
 
-const getSpawnWorldPos = (baseMap: BaseMap) => {
-  const offset = getEdgeOffset(baseMap, baseMap.spawn, SPAWN_OFFSET);
+const getSpawnWorldPos = (baseMap: BaseMap, visualOffset = 0) => {
+  const offset = getEdgeOffset(baseMap, baseMap.spawn, visualOffset);
   return {
     x: baseMap.spawn.x + 0.5 + offset.x,
     y: baseMap.spawn.y + 0.5 + offset.y,
   };
 };
 
-const getExitWorldPos = (baseMap: BaseMap) => {
-  const offset = getEdgeOffset(baseMap, baseMap.exit, EXIT_OFFSET);
+const getExitWorldPos = (baseMap: BaseMap, visualOffset = 0) => {
+  const offset = getEdgeOffset(baseMap, baseMap.exit, visualOffset);
   return {
     x: baseMap.exit.x + 0.5 + offset.x,
     y: baseMap.exit.y + 0.5 + offset.y,
@@ -142,6 +172,24 @@ interface Shot {
   towerId: string;
 }
 
+interface SpellEffect {
+  id: number;
+  spellId: SpellId;
+  x: number;
+  y: number;
+  radius: number;
+  duration: number;
+  timer: number;
+  damage: number;
+  slowMultiplier?: number;
+}
+
+interface ContractModifiers {
+  hpMult: number;
+  speedMult: number;
+  extraCreeps: number;
+}
+
 interface TexturePack {
   ground: THREE.CanvasTexture;
   lane: THREE.CanvasTexture;
@@ -189,6 +237,21 @@ interface GameState {
   scoreSubmitted: boolean;
   scoreSubmitting: boolean;
   weeklyRunRecorded: boolean;
+  mapHpMult: number;
+  mapSpeedMult: number;
+  mana: number;
+  maxMana: number;
+  manaRegen: number;
+  contractOptions: ContractDefinition[];
+  contractPicked: boolean;
+  activeContract: ContractDefinition | null;
+  contractModifiers: ContractModifiers;
+  contractResult: "success" | "fail" | null;
+  waveElapsed: number;
+  leaksThisWave: number;
+  sellsThisWave: number;
+  spellEffects: SpellEffect[];
+  spellEffectId: number;
 }
 
 interface RunStats {
@@ -239,13 +302,16 @@ interface View3D {
   structureGroup: THREE.Group;
   creepGroup: THREE.Group;
   shotGroup: THREE.Group;
+  spellGroup: THREE.Group;
   selectionRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshStandardMaterial>;
   selectionOutline: THREE.LineSegments;
   rangeRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   structureMeshes: Map<number, THREE.Object3D>;
   creepMeshes: Map<number, THREE.Object3D>;
   shotMeshes: THREE.Object3D[];
+  spellMeshes: THREE.Mesh[];
   groundPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+  pathTiles: THREE.Group;
   spawnMarker: THREE.Object3D;
   exitMarker: THREE.Object3D;
   visuals: VisualPack;
@@ -255,6 +321,7 @@ interface Runtime {
   baseMap: BaseMap;
   distance: number[];
   pathLength: number;
+  visualOffset: number;
   structureByCell: Map<number, Structure>;
   airPath: {
     points: Point[];
@@ -270,6 +337,7 @@ const PREP_DURATION = 15;
 const WEEKLY_RUNS_KEY = "lane-defense:weekly-runs";
 const GUEST_ID_KEY = "lane-defense:guest-id";
 const PST_TIMEZONE = "America/Los_Angeles";
+const DEFAULT_BOARD_CAMERA_SHIFT = 0.9;
 let guestIdCache: string | null = null;
 
 const buildTowerById = Object.fromEntries(TOWER_DEFS.map((tower) => [tower.id, tower]));
@@ -314,28 +382,75 @@ const getShotTtl = (towerId: string) => {
   }
 };
 
-const createBaseMap = (overrides?: { spawn?: Point; exit?: Point }): BaseMap => {
-  const cells: Cell[] = Array.from({ length: GRID_WIDTH * GRID_HEIGHT }, () => ({
-    terrain: "ground",
-    buildable: true,
-  }));
+const spellById = Object.fromEntries(SPELLS.map((spell) => [spell.id, spell]));
+const contractById = Object.fromEntries(CONTRACTS.map((contract) => [contract.id, contract]));
 
-  const laneX = Math.max(0, Math.min(GRID_WIDTH - 1, Math.floor((GRID_WIDTH - 1) / 2)));
-  const clampPoint = (point: Point) => ({
-    x: Math.max(0, Math.min(GRID_WIDTH - 1, point.x)),
-    y: Math.max(0, Math.min(GRID_HEIGHT - 1, point.y)),
+const getSpell = (id: SpellId): SpellDefinition => {
+  return spellById[id];
+};
+
+const getContract = (id: string): ContractDefinition | null => {
+  return contractById[id] ?? null;
+};
+
+const getContractOptionsForWave = (seed: number, wave: number) => {
+  const rng = { seed: seedFromString(`${seed}:contract:${wave}`) };
+  const pool = [...CONTRACTS];
+  const picks: ContractDefinition[] = [];
+  for (let i = 0; i < CONTRACT_PICK_COUNT && pool.length; i += 1) {
+    const index = Math.floor(nextRng(rng) * pool.length);
+    picks.push(pool.splice(index, 1)[0]);
+  }
+  return picks;
+};
+
+const SPELL_COLORS: Record<SpellId, number> = {
+  lightning: 0xf6e48b,
+  acid: 0x66e0a3,
+  icy: 0x7bc7ff,
+};
+
+const createBaseMap = (overrides?: {
+  spawn?: Point;
+  exit?: Point;
+  mapData?: MapData | null;
+}): BaseMap => {
+  const mapData = overrides?.mapData ?? null;
+  const width = mapData?.width ?? GRID_WIDTH;
+  const height = mapData?.height ?? GRID_HEIGHT;
+  const tiles = mapData?.tiles ?? [];
+
+  const cells: Cell[] = Array.from({ length: width * height }, (_, index) => {
+    if (mapData) {
+      const tile = tiles[index] ?? MAP_TILE_BLOCKED;
+      if (tile === MAP_TILE_PATH || tile === MAP_TILE_BUILDABLE) {
+        return { terrain: "ground", buildable: true, tileType: "path" };
+      }
+      return { terrain: "cliff", buildable: false, tileType: "blocked" };
+    }
+    return { terrain: "ground", buildable: true, tileType: "path" };
   });
-  const spawn = clampPoint(overrides?.spawn ?? { x: laneX, y: 0 });
-  const exit = clampPoint(overrides?.exit ?? { x: laneX, y: GRID_HEIGHT - 1 });
 
-  const spawnIndex = tileIndex(spawn.x, spawn.y, GRID_WIDTH);
-  const exitIndex = tileIndex(exit.x, exit.y, GRID_WIDTH);
-  cells[spawnIndex].buildable = false;
-  cells[exitIndex].buildable = false;
+  const laneX = Math.max(0, Math.min(width - 1, Math.floor((width - 1) / 2)));
+  const clampPoint = (point: Point) => ({
+    x: Math.max(0, Math.min(width - 1, point.x)),
+    y: Math.max(0, Math.min(height - 1, point.y)),
+  });
+  const spawn = clampPoint(overrides?.spawn ?? mapData?.spawn ?? { x: laneX, y: 0 });
+  const exit = clampPoint(overrides?.exit ?? mapData?.exit ?? { x: laneX, y: height - 1 });
+
+  const spawnIndex = tileIndex(spawn.x, spawn.y, width);
+  const exitIndex = tileIndex(exit.x, exit.y, width);
+  if (cells[spawnIndex]) {
+    cells[spawnIndex] = { terrain: "ground", buildable: false, tileType: "path" };
+  }
+  if (cells[exitIndex]) {
+    cells[exitIndex] = { terrain: "ground", buildable: false, tileType: "path" };
+  }
 
   return {
-    width: GRID_WIDTH,
-    height: GRID_HEIGHT,
+    width,
+    height,
     spawn,
     exit,
     cells,
@@ -430,7 +545,10 @@ const getPointAlongPath = (path: Runtime["airPath"], distance: number): Point =>
   return path.points[path.points.length - 1];
 };
 
-const makeInitialState = (seed: number): GameState => {
+const makeInitialState = (
+  seed: number,
+  mapModifiers?: { hpMult?: number; speedMult?: number }
+): GameState => {
   return {
     seed,
     rng: { seed },
@@ -450,6 +568,21 @@ const makeInitialState = (seed: number): GameState => {
     scoreSubmitted: false,
     scoreSubmitting: false,
     weeklyRunRecorded: false,
+    mapHpMult: mapModifiers?.hpMult ?? 1,
+    mapSpeedMult: mapModifiers?.speedMult ?? 1,
+    mana: WIZARD_START_MANA,
+    maxMana: WIZARD_MAX_MANA,
+    manaRegen: WIZARD_REGEN,
+    contractOptions: [],
+    contractPicked: false,
+    activeContract: null,
+    contractModifiers: { hpMult: 1, speedMult: 1, extraCreeps: 0 },
+    contractResult: null,
+    waveElapsed: 0,
+    leaksThisWave: 0,
+    sellsThisWave: 0,
+    spellEffects: [],
+    spellEffectId: 1,
   };
 };
 
@@ -459,6 +592,14 @@ const buildSpawnQueue = (state: GameState) => {
   for (const group of waveDef.groups) {
     for (let i = 0; i < group.count; i += 1) {
       queue.push(group.creepId);
+    }
+  }
+
+  const bonus = state.contractModifiers.extraCreeps ?? 0;
+  if (bonus > 0) {
+    const fallback = queue[0] ?? waveDef.groups[0]?.creepId ?? "basic";
+    for (let i = 0; i < bonus; i += 1) {
+      queue.push(fallback);
     }
   }
 
@@ -472,12 +613,85 @@ const buildSpawnQueue = (state: GameState) => {
   state.spawnCooldown = 0;
 };
 
-const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; exit?: Point }): Runtime => {
+const resetWaveMetrics = (state: GameState) => {
+  state.waveElapsed = 0;
+  state.leaksThisWave = 0;
+  state.sellsThisWave = 0;
+  state.contractResult = null;
+  state.spellEffects = [];
+};
+
+const applyContractSelection = (state: GameState, contract: ContractDefinition | null) => {
+  state.activeContract = contract;
+  state.contractPicked = true;
+  state.contractModifiers = {
+    hpMult: contract?.downside.hpMult ?? 1,
+    speedMult: contract?.downside.speedMult ?? 1,
+    extraCreeps: contract?.downside.extraCreeps ?? 0,
+  };
+};
+
+const prepareContractsForWave = (state: GameState) => {
+  if (!isCoop()) return;
+  state.contractOptions = getContractOptionsForWave(state.seed, state.wave);
+  state.contractPicked = false;
+  state.activeContract = null;
+  state.contractModifiers = { hpMult: 1, speedMult: 1, extraCreeps: 0 };
+};
+
+const resolveContract = (state: GameState) => {
+  const contract = state.activeContract;
+  if (!contract) return;
+  let success = false;
+  switch (contract.success.type) {
+    case "no-leaks":
+      success = state.leaksThisWave === 0;
+      break;
+    case "no-sell":
+      success = state.sellsThisWave === 0;
+      break;
+    case "fast-clear":
+      success = state.waveElapsed <= (contract.success.value ?? 0);
+      break;
+    case "low-mana":
+      success = state.mana >= (contract.success.value ?? 0);
+      break;
+    default:
+      success = false;
+  }
+  state.contractResult = success ? "success" : "fail";
+  if (success) {
+    state.mana = clamp(state.mana + contract.reward.mana, 0, state.maxMana);
+    showToast(`Contract success +${contract.reward.mana} mana`);
+  } else {
+    showToast("Contract failed");
+  }
+};
+
+const startWave = (state: GameState, contractId?: string | null) => {
+  if (state.phase !== "prep") return;
+  if (isCoop() && !state.contractPicked) {
+    const contract = contractId ? getContract(contractId) : null;
+    applyContractSelection(state, contract);
+  }
+  resetWaveMetrics(state);
+  buildSpawnQueue(state);
+  state.phase = "wave";
+  state.phaseTimer = 0;
+  coopWaveStartPending = false;
+};
+
+const createRuntime = (
+  canvas: HTMLCanvasElement,
+  overrides?: { spawn?: Point; exit?: Point; mapData?: MapData | null }
+): Runtime => {
   const baseMap = createBaseMap(overrides);
   const structureByCell = new Map<number, Structure>();
   const distance = computeDistances(baseMap, structureByCell);
   const spawnIndex = tileIndex(baseMap.spawn.x, baseMap.spawn.y, baseMap.width);
   const pathLength = distance[spawnIndex];
+  const usePrimaryOffset = gameMode === "standard" && !currentMap;
+  const visualOffset = usePrimaryOffset ? PRIMARY_MAP_VISUAL_OFFSET : 0;
 
   const visuals = getVisualPack();
 
@@ -507,8 +721,9 @@ const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; e
   const structureGroup = new THREE.Group();
   const creepGroup = new THREE.Group();
   const shotGroup = new THREE.Group();
+  const spellGroup = new THREE.Group();
 
-  scene.add(mapGroup, structureGroup, creepGroup, shotGroup);
+  scene.add(mapGroup, structureGroup, creepGroup, shotGroup, spellGroup);
 
   const ambient = new THREE.AmbientLight(0x5a8fc0, 0.92);
   scene.add(ambient);
@@ -539,24 +754,42 @@ const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; e
   scene.add(rim);
 
   const groundPlane = createTerrainMesh(baseMap, visuals);
+  const pathOnlyMap = Boolean(overrides?.mapData);
+  if (pathOnlyMap) {
+    groundPlane.material.transparent = true;
+    groundPlane.material.opacity = 0;
+  }
   mapGroup.add(groundPlane);
 
-  const edgeTiles = createEdgeTiles(baseMap, visuals);
-  mapGroup.add(edgeTiles);
+  const spawnOffset = getEdgeOffset(baseMap, baseMap.spawn, visualOffset);
+  const exitOffset = getEdgeOffset(baseMap, baseMap.exit, visualOffset);
+  const extraTiles = visualOffset
+    ? [
+        { x: baseMap.spawn.x + spawnOffset.x, y: baseMap.spawn.y + spawnOffset.y },
+        { x: baseMap.exit.x + exitOffset.x, y: baseMap.exit.y + exitOffset.y },
+      ]
+    : [];
+  const pathTiles = createPathTiles(baseMap, visuals, extraTiles);
+  mapGroup.add(pathTiles);
 
   const foamMesh = createFoamMesh(baseMap, visuals);
+  if (pathOnlyMap) {
+    foamMesh.visible = false;
+  }
   mapGroup.add(foamMesh);
 
-  const gridLines = createGridLines(baseMap.width, baseMap.height);
+  const gridLines = pathOnlyMap
+    ? createTileGridLines(baseMap)
+    : createGridLines(baseMap.width, baseMap.height);
   mapGroup.add(gridLines);
 
   const spawnMarker = createSpawnMarker(visuals);
-  const spawnWorld = getSpawnWorldPos(baseMap);
+  const spawnWorld = getSpawnWorldPos(baseMap, visualOffset);
   spawnMarker.position.set(spawnWorld.x, 0.2, spawnWorld.y);
   mapGroup.add(spawnMarker);
 
   const exitMarker = createExitMarker(visuals);
-  const exitWorld = getExitWorldPos(baseMap);
+  const exitWorld = getExitWorldPos(baseMap, visualOffset);
   exitMarker.position.set(exitWorld.x, 0.2, exitWorld.y);
   mapGroup.add(exitMarker);
 
@@ -610,6 +843,7 @@ const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; e
     baseMap,
     distance,
     pathLength,
+    visualOffset,
     structureByCell,
     airPath: buildAirPath(baseMap),
     view: {
@@ -622,7 +856,7 @@ const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; e
       width: 0,
       height: 0,
       cameraTarget,
-      zoom: 1,
+      zoom: 0.95,
       minZoom: 0.7,
       maxZoom: 3.2,
       baseDistance: 1,
@@ -630,13 +864,16 @@ const createRuntime = (canvas: HTMLCanvasElement, overrides?: { spawn?: Point; e
       structureGroup,
       creepGroup,
       shotGroup,
+      spellGroup,
       selectionRing,
       selectionOutline,
       rangeRing,
       structureMeshes: new Map(),
       creepMeshes: new Map(),
       shotMeshes: [],
+      spellMeshes: [],
       groundPlane,
+      pathTiles,
       spawnMarker,
       exitMarker,
       visuals,
@@ -654,6 +891,8 @@ const createCreep = (state: GameState, typeId: string, runtime: Runtime): CreepI
   const def = CREEP_DEFS[typeId];
   const waveScale = 1 + (state.wave - 1) * GAME_CONFIG.waveHpScale;
   const speedScale = 1 + (state.wave - 1) * GAME_CONFIG.waveSpeedScale;
+  const contractHp = state.contractModifiers.hpMult ?? 1;
+  const contractSpeed = state.contractModifiers.speedMult ?? 1;
   let hpDifficulty =
     state.wave === 10
       ? 3
@@ -670,13 +909,20 @@ const createCreep = (state: GameState, typeId: string, runtime: Runtime): CreepI
     hpDifficulty = 5;
   }
 
-  const spawnWorld = getSpawnWorldPos(runtime.baseMap);
+  const spawnWorld = getSpawnWorldPos(runtime.baseMap, runtime.visualOffset);
   return {
     id: state.nextId++,
     typeId,
-    hp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale * hpDifficulty,
-    maxHp: def.baseHp * GAME_CONFIG.baseHpMult * waveScale * hpDifficulty,
-    speed: def.baseSpeed * GAME_CONFIG.baseSpeedMult * speedScale,
+    hp:
+      def.baseHp * GAME_CONFIG.baseHpMult * state.mapHpMult * waveScale * hpDifficulty * contractHp,
+    maxHp:
+      def.baseHp * GAME_CONFIG.baseHpMult * state.mapHpMult * waveScale * hpDifficulty * contractHp,
+    speed:
+      def.baseSpeed *
+      GAME_CONFIG.baseSpeedMult *
+      state.mapSpeedMult *
+      speedScale *
+      contractSpeed,
     x: spawnWorld.x,
     y: spawnWorld.y,
     isFlying: def.isFlying,
@@ -709,6 +955,65 @@ const applySlow = (creep: CreepInstance, multiplier: number, duration: number) =
 
   creep.slowMultiplier = Math.min(creep.slowMultiplier, multiplier);
   creep.slowTimer = Math.max(creep.slowTimer, duration);
+};
+
+const addSpellEffect = (
+  state: GameState,
+  spellId: SpellId,
+  x: number,
+  y: number,
+  duration: number,
+  damage: number,
+  slowMultiplier?: number
+) => {
+  state.spellEffects.push({
+    id: state.spellEffectId++,
+    spellId,
+    x,
+    y,
+    radius: getSpell(spellId).radius,
+    duration,
+    timer: duration,
+    damage,
+    slowMultiplier,
+  });
+};
+
+const applySpellCast = (
+  state: GameState,
+  runtime: Runtime,
+  spellId: SpellId,
+  x: number,
+  y: number,
+  force = false
+) => {
+  const spell = getSpell(spellId);
+  if (!force) {
+    if (state.phase !== "wave") return false;
+    if (state.mana < spell.manaCost) return false;
+  }
+  state.mana = clamp(state.mana - spell.manaCost, 0, state.maxMana);
+
+  const radiusSq = spell.radius * spell.radius;
+  if (spell.id === "lightning") {
+    for (const creep of state.creeps) {
+      const dx = creep.x - x;
+      const dy = creep.y - y;
+      if (dx * dx + dy * dy <= radiusSq) {
+        applyDamage(creep, spell.damage, "arcane");
+      }
+    }
+    addSpellEffect(state, spellId, x, y, 0.35, 0);
+    return true;
+  }
+
+  const duration = spell.duration ?? 0;
+  if (duration > 0) {
+    addSpellEffect(state, spellId, x, y, duration, spell.damage, spell.slowMultiplier);
+    return true;
+  }
+
+  return false;
 };
 
 const getDistanceRemaining = (creep: CreepInstance, runtime: Runtime): number => {
@@ -858,7 +1163,7 @@ const updateTowers = (state: GameState, runtime: Runtime, dt: number) => {
 const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
   const { baseMap } = runtime;
   const exit = baseMap.exit;
-  const exitTarget = getExitWorldPos(baseMap);
+  const exitTarget = getExitWorldPos(baseMap, runtime.visualOffset);
   const alive: CreepInstance[] = [];
 
   for (const creep of state.creeps) {
@@ -877,6 +1182,7 @@ const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
       creep.x = position.x;
       creep.y = position.y;
       if (creep.airDistance >= runtime.airPath.total) {
+        state.leaksThisWave += 1;
         state.lives = Math.max(0, state.lives - CREEP_DEFS[creep.typeId].leakDamage);
         continue;
       }
@@ -893,6 +1199,7 @@ const updateCreeps = (state: GameState, runtime: Runtime, dt: number) => {
       const dy = exitTarget.y - creep.y;
       const distance = Math.hypot(dx, dy);
       if (distance <= 0.02) {
+        state.leaksThisWave += 1;
         state.lives = Math.max(0, state.lives - CREEP_DEFS[creep.typeId].leakDamage);
         continue;
       }
@@ -968,6 +1275,33 @@ const updateShots = (state: GameState, dt: number) => {
   state.shots = nextShots;
 };
 
+const updateSpellEffects = (state: GameState, runtime: Runtime, dt: number) => {
+  if (!state.spellEffects.length) return;
+  const nextEffects: SpellEffect[] = [];
+  for (const effect of state.spellEffects) {
+    effect.timer -= dt;
+    if (effect.damage > 0 || effect.slowMultiplier) {
+      const radiusSq = effect.radius * effect.radius;
+      for (const creep of state.creeps) {
+        const dx = creep.x - effect.x;
+        const dy = creep.y - effect.y;
+        if (dx * dx + dy * dy <= radiusSq) {
+          if (effect.damage > 0) {
+            applyDamage(creep, effect.damage * dt, "arcane");
+          }
+          if (effect.slowMultiplier) {
+            applySlow(creep, effect.slowMultiplier, 0.35);
+          }
+        }
+      }
+    }
+    if (effect.timer > 0) {
+      nextEffects.push(effect);
+    }
+  }
+  state.spellEffects = nextEffects;
+};
+
 const canPlaceStructure = (runtime: Runtime, x: number, y: number): boolean => {
   if (x < 0 || y < 0 || x >= runtime.baseMap.width || y >= runtime.baseMap.height) return false;
   const index = tileIndex(x, y, runtime.baseMap.width);
@@ -1036,6 +1370,7 @@ const finalizeRoundDamage = (state: GameState) => {
 };
 
 const updateWaveState = (state: GameState, runtime: Runtime, dt: number) => {
+  state.waveElapsed += dt;
   if (state.spawnIndex < state.spawnQueue.length) {
     state.spawnCooldown -= dt;
     if (state.spawnCooldown <= 0) {
@@ -1046,6 +1381,7 @@ const updateWaveState = (state: GameState, runtime: Runtime, dt: number) => {
     }
   }
 
+  updateSpellEffects(state, runtime, dt);
   updateCreeps(state, runtime, dt);
   updateTowers(state, runtime, dt);
   cleanupCreeps(state);
@@ -1058,6 +1394,7 @@ const updateWaveState = (state: GameState, runtime: Runtime, dt: number) => {
 
   const doneSpawning = state.spawnIndex >= state.spawnQueue.length;
   if (doneSpawning && state.creeps.length == 0) {
+    resolveContract(state);
     finalizeRoundDamage(state);
     if (state.wave >= MAX_WAVES) {
       state.phase = "victory";
@@ -1069,6 +1406,7 @@ const updateWaveState = (state: GameState, runtime: Runtime, dt: number) => {
     state.wave += 1;
     state.phase = "prep";
     state.phaseTimer = PREP_DURATION;
+    prepareContractsForWave(state);
     state.shots = [];
   }
 };
@@ -1401,13 +1739,17 @@ const updateDailyLeaderboardHeading = (data: DailyChallengeLeaderboardResponse) 
   const subtitle = document.querySelector("#end-daily-leaderboard .end-section-subtitle");
   const dateLine = document.getElementById("daily-leaderboard-date");
   if (title) {
-    title.textContent = "Daily Challenge Leaderboard";
+    const dateLabel = formatDailyDate(data.date);
+    title.textContent = dateLabel
+      ? `Daily Challenge Leaderboard (${dateLabel})`
+      : "Daily Challenge Leaderboard";
   }
   if (subtitle) {
-    subtitle.textContent = "All players today";
+    subtitle.textContent = "";
   }
+  startDailyResetCountdown(dateLine instanceof HTMLElement ? dateLine : null);
   if (dateLine) {
-    dateLine.textContent = formatDailyDate(data.date) || "--";
+    dateLine.style.display = "block";
   }
 };
 
@@ -1865,7 +2207,7 @@ const createTerrainMesh = (baseMap: BaseMap, visuals: VisualPack) => {
   return mesh;
 };
 
-const createEdgeTiles = (baseMap: BaseMap, visuals: VisualPack) => {
+const createPathTiles = (baseMap: BaseMap, visuals: VisualPack, extraTiles: Point[] = []) => {
   const group = new THREE.Group();
   const geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
   const material = visuals.materials.lane;
@@ -1878,10 +2220,18 @@ const createEdgeTiles = (baseMap: BaseMap, visuals: VisualPack) => {
     group.add(tile);
   };
 
-  const spawnWorld = { x: baseMap.spawn.x + 0.5, y: baseMap.spawn.y + 0.5 };
-  const exitWorld = { x: baseMap.exit.x + 0.5, y: baseMap.exit.y + 0.5 };
-  makeTile(spawnWorld.x, spawnWorld.y);
-  makeTile(exitWorld.x, exitWorld.y);
+  for (let y = 0; y < baseMap.height; y += 1) {
+    for (let x = 0; x < baseMap.width; x += 1) {
+      const index = tileIndex(x, y, baseMap.width);
+      if (baseMap.cells[index].tileType !== "path") continue;
+      makeTile(x + 0.5, y + 0.5);
+    }
+  }
+
+  extraTiles.forEach((tile) => {
+    makeTile(tile.x + 0.5, tile.y + 0.5);
+  });
+
   return group;
 };
 
@@ -1924,6 +2274,47 @@ const createGridLines = (width: number, height: number) => {
   }
   for (let y = 0; y <= height; y += 1) {
     vertices.push(0, 0.12, y, width, 0.12, y);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+
+  const material = new THREE.LineBasicMaterial({
+    color: 0xd0f2ff,
+    transparent: true,
+    opacity: 0.38,
+  });
+  material.depthTest = true;
+  material.depthWrite = false;
+
+  const lines = new THREE.LineSegments(geometry, material);
+  lines.renderOrder = 1;
+  lines.frustumCulled = false;
+  return lines;
+};
+
+const createTileGridLines = (baseMap: BaseMap) => {
+  const vertices: number[] = [];
+  const edgeSet = new Set<string>();
+  const addEdge = (x1: number, y1: number, x2: number, y2: number) => {
+    const key =
+      x1 < x2 || (x1 === x2 && y1 < y2)
+        ? `${x1},${y1},${x2},${y2}`
+        : `${x2},${y2},${x1},${y1}`;
+    if (edgeSet.has(key)) return;
+    edgeSet.add(key);
+    vertices.push(x1, 0.12, y1, x2, 0.12, y2);
+  };
+
+  for (let y = 0; y < baseMap.height; y += 1) {
+    for (let x = 0; x < baseMap.width; x += 1) {
+      const index = tileIndex(x, y, baseMap.width);
+      if (baseMap.cells[index].tileType !== "path") continue;
+      addEdge(x, y, x + 1, y);
+      addEdge(x + 1, y, x + 1, y + 1);
+      addEdge(x + 1, y + 1, x, y + 1);
+      addEdge(x, y + 1, x, y);
+    }
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -3037,13 +3428,14 @@ const applyCameraZoom = (runtime: Runtime) => {
 
 const fitCameraToGrid = (runtime: Runtime) => {
   const { camera } = runtime.view;
-  const gridW = runtime.baseMap.width;
-  const gridH = runtime.baseMap.height;
+  const gridW = runtime.baseMap.width + runtime.visualOffset * 2;
+  const gridH = runtime.baseMap.height + runtime.visualOffset * 2;
   const maxSize = Math.max(gridW, gridH);
   const fov = THREE.MathUtils.degToRad(camera.fov);
   const distance = maxSize / (2 * Math.tan(fov / 2));
-  runtime.view.baseDistance = distance * 1.05;
-  runtime.view.cameraTarget.set(gridW / 2, 0, gridH / 2);
+  runtime.view.baseDistance = distance * 1.26;
+  const shift = getBoardCameraShift();
+  runtime.view.cameraTarget.set(gridW / 2, 0, gridH / 2 + shift);
   applyCameraZoom(runtime);
 };
 
@@ -3062,8 +3454,8 @@ const resizeCanvas = (runtime: Runtime) => {
 
 const updateMapMarkers = (runtime: Runtime) => {
   const { baseMap, view } = runtime;
-  const spawnWorld = getSpawnWorldPos(baseMap);
-  const exitWorld = getExitWorldPos(baseMap);
+  const spawnWorld = getSpawnWorldPos(baseMap, runtime.visualOffset);
+  const exitWorld = getExitWorldPos(baseMap, runtime.visualOffset);
   view.spawnMarker.position.set(spawnWorld.x, 0.2, spawnWorld.y);
   view.exitMarker.position.set(exitWorld.x, 0.2, exitWorld.y);
 };
@@ -3397,6 +3789,45 @@ const syncShots = (runtime: Runtime, state: GameState, timeSec: number) => {
   }
 };
 
+const syncSpellEffects = (runtime: Runtime, state: GameState, timeSec: number) => {
+  const { spellGroup, spellMeshes } = runtime.view;
+  const effects = state.spellEffects;
+  for (let i = 0; i < effects.length; i += 1) {
+    const effect = effects[i];
+    let mesh = spellMeshes[i];
+    if (!mesh) {
+      const material = new THREE.MeshBasicMaterial({
+        color: SPELL_COLORS[effect.spellId],
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      });
+      mesh = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.0, 32), material);
+      mesh.rotation.x = -Math.PI / 2;
+      spellGroup.add(mesh);
+      spellMeshes[i] = mesh;
+    }
+    const alpha = clamp(effect.timer / Math.max(effect.duration, 0.01), 0, 1);
+    const pulse = 0.95 + Math.sin(timeSec * 6 + effect.id) * 0.08;
+    mesh.position.set(effect.x, 0.05, effect.y);
+    mesh.scale.set(effect.radius * pulse, effect.radius * pulse, 1);
+    if (mesh.material instanceof THREE.MeshBasicMaterial) {
+      mesh.material.color.setHex(SPELL_COLORS[effect.spellId]);
+      mesh.material.opacity = 0.15 + 0.35 * alpha;
+    }
+    mesh.visible = true;
+  }
+
+  for (let i = effects.length; i < spellMeshes.length; i += 1) {
+    const mesh = spellMeshes[i];
+    if (mesh) {
+      mesh.visible = false;
+    }
+  }
+};
+
 const syncSelection = (runtime: Runtime, selection: Structure | null, timeSec: number) => {
   const ring = runtime.view.selectionRing;
   const outline = runtime.view.selectionOutline;
@@ -3449,23 +3880,146 @@ const render = (runtime: Runtime, state: GameState, selection: Structure | null,
   syncStructures(runtime, state, timeSec);
   syncCreeps(runtime, state, timeSec);
   syncShots(runtime, state, timeSec);
+  syncSpellEffects(runtime, state, timeSec);
   syncSelection(runtime, selection, timeSec);
   runtime.view.renderer.render(runtime.view.scene, runtime.view.camera);
 };
 
 const updateNextRoundButton = (state: GameState) => {
   if (!nextRoundButton) return;
-  const visible = hasRendered && showNextRound && state.phase == "prep";
+  const visible = hasRendered && showNextRound && state.phase == "prep" && !isCoopWizard();
   nextRoundButton.classList.toggle("hidden", !visible);
-  nextRoundButton.disabled = !visible;
+  const contractLocked = isCoopBuilder() && !state.contractPicked;
+  nextRoundButton.disabled = !visible || contractLocked;
 };
 
 const updateSpeedToggle = (state: GameState) => {
   if (!speedToggleButton) return;
+  if (isCoop()) {
+    speedToggleButton.classList.add("hidden");
+    return;
+  }
   const visible = hasRendered && state.phase == "wave";
   speedToggleButton.classList.toggle("hidden", !visible);
   speedToggleButton.classList.toggle("active", speedMultiplier > 1);
   speedToggleButton.textContent = speedMultiplier > 1 ? "Speed x1" : "Speed x2";
+};
+
+const renderSpellButtons = () => {
+  if (!spellRowEl) return;
+  spellRowEl.innerHTML = "";
+  SPELLS.forEach((spell) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "spell-button";
+    button.dataset.spell = spell.id;
+    button.innerHTML = `<div>${spell.name}</div><div>${spell.manaCost} mana</div>`;
+    button.addEventListener("click", () => {
+      if (!isCoopWizard()) return;
+      if (state.phase !== "wave") {
+        showToast("Cast spells during the wave.");
+        return;
+      }
+      if (state.mana < spell.manaCost) {
+        showToast("Not enough mana.");
+        return;
+      }
+      pendingSpell = pendingSpell === spell.id ? null : spell.id;
+      updateSpellButtons(state);
+      if (pendingSpell) {
+        showToast("Tap the board to cast.");
+      }
+    });
+    spellRowEl?.appendChild(button);
+  });
+};
+
+const updateSpellButtons = (state: GameState) => {
+  if (!spellRowEl) return;
+  const buttons = Array.from(spellRowEl.querySelectorAll<HTMLButtonElement>("[data-spell]"));
+  buttons.forEach((button) => {
+    const id = button.dataset.spell as SpellId;
+    const spell = getSpell(id);
+    const canCast = state.phase === "wave" && state.mana >= spell.manaCost;
+    button.disabled = !canCast;
+    button.classList.toggle("active", pendingSpell === id);
+  });
+};
+
+const updateWizardHud = (state: GameState) => {
+  if (!wizardPanel || !manaFillEl || !manaValueEl) return;
+  if (!isCoopWizard()) return;
+  if (state.phase !== "wave" && pendingSpell) {
+    pendingSpell = null;
+  }
+  const ratio = clamp(state.mana / state.maxMana, 0, 1);
+  manaFillEl.style.width = `${Math.round(ratio * 100)}%`;
+  manaValueEl.textContent = `${Math.floor(state.mana)}`;
+  updateSpellButtons(state);
+};
+
+const updateContractBanner = (state: GameState) => {
+  if (!contractBannerEl || !contractTextEl) return;
+  if (!isCoop()) {
+    contractBannerEl.classList.add("hidden");
+    contractBannerEl.setAttribute("aria-hidden", "true");
+    return;
+  }
+  contractBannerEl.classList.remove("hidden");
+  contractBannerEl.setAttribute("aria-hidden", "false");
+  if (state.activeContract) {
+    const suffix =
+      state.contractResult === "success" ? " ✓" : state.contractResult === "fail" ? " ✕" : "";
+    contractTextEl.textContent = `${state.activeContract.title}${suffix}`;
+  } else if (state.contractPicked) {
+    contractTextEl.textContent = "Skipped";
+  } else {
+    contractTextEl.textContent = state.phase === "prep" ? "Pick a contract" : "No contract";
+  }
+};
+
+const updateContractPicker = (state: GameState) => {
+  if (!contractPickerEl) return;
+  const shouldShow = isCoopWizard() && state.phase === "prep" && !state.contractPicked;
+  contractPickerEl.classList.toggle("show", shouldShow);
+  contractPickerEl.setAttribute("aria-hidden", shouldShow ? "false" : "true");
+  if (!shouldShow) {
+    contractPickerEl.innerHTML = "";
+    contractPickerKey = "";
+    return;
+  }
+  const key = `${state.wave}:${state.contractOptions.map((contract) => contract.id).join("|")}`;
+  if (contractPickerKey === key) return;
+  contractPickerKey = key;
+  contractPickerEl.innerHTML = "";
+  const panel = document.createElement("div");
+  panel.className = "contract-panel";
+  panel.innerHTML = `<h3>Wizard Contracts</h3>`;
+  state.contractOptions.forEach((contract) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "contract-card";
+    card.innerHTML = `
+      <div class="contract-card-title">${contract.title}</div>
+      <div class="contract-card-desc">${contract.description}</div>
+    `;
+    card.addEventListener("click", () => {
+      void selectContract(contract.id);
+    });
+    panel.appendChild(card);
+  });
+  const actions = document.createElement("div");
+  actions.className = "contract-actions";
+  const skip = document.createElement("button");
+  skip.type = "button";
+  skip.className = "contract-card contract-skip";
+  skip.textContent = "Skip Contract";
+  skip.addEventListener("click", () => {
+    void selectContract(null);
+  });
+  actions.appendChild(skip);
+  panel.appendChild(actions);
+  contractPickerEl.appendChild(panel);
 };
 
 const updateHud = (state: GameState, runtime: Runtime) => {
@@ -3499,6 +4053,9 @@ const updateHud = (state: GameState, runtime: Runtime) => {
     bankEl.textContent = `${bankCount * BANK_DEFINITION.income}`;
   }
 
+  updateWizardHud(state);
+  updateContractBanner(state);
+  updateContractPicker(state);
   updateNextRoundButton(state);
   updateSpeedToggle(state);
 };
@@ -3506,6 +4063,10 @@ const updateHud = (state: GameState, runtime: Runtime) => {
 const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
   const bar = document.getElementById("build-bar");
   if (!bar) return;
+  if (isCoopWizard()) {
+    bar.innerHTML = "";
+    return;
+  }
 
   bar.innerHTML = "";
   const options = [
@@ -3537,6 +4098,14 @@ const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
       };
     }),
   ];
+  const labelOverrides: Record<string, string> = {
+    wall: "Wall",
+    basic: "Arrow",
+    bank: "Bank",
+    long: "Ballista",
+    splash: "Flame",
+    slow: "Frost",
+  };
 
   for (const option of options) {
     const button = document.createElement("button");
@@ -3549,12 +4118,10 @@ const updateBuildBar = (state: GameState, buildSelection: BuildSelection) => {
       (buildSelection.kind != "tower" || buildSelection.towerId == option.id);
     if (isSelected) button.classList.add("active");
 
+    const shortLabel = labelOverrides[option.id] ?? option.label;
     button.innerHTML = `
       <div class="build-icon"></div>
-      <div>
-        <div class="build-name">${option.label}</div>
-        <div class="build-cost">${option.cost}g</div>
-      </div>
+      <div class="build-name">${shortLabel} (${option.cost}g)</div>
     `;
     button.addEventListener("click", () => {
       if (isSelected) {
@@ -3577,6 +4144,16 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
   const tray = document.getElementById("action-tray");
   const controls = document.getElementById("action-controls");
   if (!tray || !controls) return;
+  if (isCoopWizard()) {
+    tray.classList.remove("show");
+    tray.setAttribute("aria-hidden", "true");
+    tray.innerHTML = "";
+    controls.classList.remove("show");
+    controls.setAttribute("aria-hidden", "true");
+    controls.innerHTML = "";
+    actionTrayKey = "";
+    return;
+  }
 
   const canInteract = state.phase != "victory" && state.phase != "defeat";
   const hasBuildSelection = buildSelection.kind != "none";
@@ -3693,7 +4270,24 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
       targetButton.textContent = `Target ${selected.targetMode}`;
       targetButton.addEventListener("click", () => {
         const index = TARGET_MODES.indexOf(selected.targetMode);
-        selected.targetMode = TARGET_MODES[(index + 1) % TARGET_MODES.length];
+        const nextMode = TARGET_MODES[(index + 1) % TARGET_MODES.length];
+        if (isCoopBuilder()) {
+          void (async () => {
+            try {
+              await sendAndApplyCoopEvent({
+                runId: coopRunId,
+                role: "builder",
+                type: "target",
+                tick: state.tick,
+                payload: { id: selected.id, targetMode: nextMode },
+              });
+            } catch {
+              showToast("Target update failed.");
+            }
+          })();
+          return;
+        }
+        selected.targetMode = nextMode;
         renderActionTray(state, selected, buildSelection);
       });
       buttons.appendChild(targetButton);
@@ -3708,6 +4302,22 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
         upgradeButton.disabled = state.gold < nextTier.cost;
         upgradeButton.addEventListener("click", () => {
           if (state.gold < nextTier.cost) return;
+          if (isCoopBuilder()) {
+            void (async () => {
+              try {
+                await sendAndApplyCoopEvent({
+                  runId: coopRunId,
+                  role: "builder",
+                  type: "upgrade",
+                  tick: state.tick,
+                  payload: { id: selected.id },
+                });
+              } catch {
+                showToast("Upgrade failed.");
+              }
+            })();
+            return;
+          }
           state.gold -= nextTier.cost;
           selected.tier += 1;
           selected.spent += nextTier.cost;
@@ -3722,7 +4332,24 @@ const renderActionTray = (state: GameState, selected: Structure | null, buildSel
     sellButton.className = "action-btn";
     sellButton.textContent = `Sell ${getSellValue(state, selected)}g`;
     sellButton.addEventListener("click", () => {
+      if (isCoopBuilder()) {
+        void (async () => {
+          try {
+            await sendAndApplyCoopEvent({
+              runId: coopRunId,
+              role: "builder",
+              type: "sell",
+              tick: state.tick,
+              payload: { id: selected.id },
+            });
+          } catch {
+            showToast("Sell failed.");
+          }
+        })();
+        return;
+      }
       state.gold += getSellValue(state, selected);
+      state.sellsThisWave += 1;
       removeStructure(state, runtime, selected);
       activeSelection = null;
       renderActionTray(state, null, buildSelection);
@@ -3892,18 +4519,13 @@ const renderEndModal = (
   options?: { stats?: RunStats; skipRecord?: boolean }
 ) => {
   const modal = document.getElementById("end-modal");
-  const title = document.getElementById("end-title");
-  const summary = document.getElementById("end-summary");
   const breakdown = document.getElementById("score-breakdown");
   const panels = document.getElementById("end-panels");
-  if (!modal || !title || !summary) return;
+  if (!modal) return;
 
   const stats = options?.stats ?? getRunStats(state, runtime);
   latestRunStats = stats;
   latestRunStats = stats;
-
-  title.textContent = state.phase == "victory" ? "Victory" : "Defeat";
-  summary.textContent = `Waves cleared: ${stats.waves}. Score: ${stats.score}.`;
   if (panels) {
     panels.style.display = "grid";
   }
@@ -3916,6 +4538,7 @@ const renderEndModal = (
       <div class="score-line"><span>Waves Cleared (${stats.waves} x 1000)</span><strong>${wavesScore}</strong></div>
       <div class="score-line"><span>HP Remaining (${stats.hp} x 50)</span><strong>${hpScore}</strong></div>
       <div class="score-line"><span>Gold Remaining</span><strong>${goldScore}</strong></div>
+      <div class="score-sum-line" aria-hidden="true"></div>
       <div class="score-line total"><span>Total Score</span><strong>${total}</strong></div>
     `;
   }
@@ -3935,6 +4558,9 @@ const renderEndModal = (
     renderHistory(history);
     void loadWeeklyLeaderboard();
     void loadDailyLeaderboard();
+    if (currentMapId) {
+      void submitMapRun(state);
+    }
   }
   if (feedbackInput) {
     feedbackInput.value = "";
@@ -3987,6 +4613,11 @@ const hideEndModal = () => {
 const submitScore = async (state: GameState) => {
   if (state.scoreSubmitted || state.scoreSubmitting) return;
   state.scoreSubmitting = true;
+  if (gameMode === "ugc" || gameMode === "coop") {
+    state.scoreSubmitting = false;
+    state.scoreSubmitted = true;
+    return;
+  }
   const stats = getRunStats(state, runtime);
   let bestRun = stats;
   if (gameMode === "standard") {
@@ -4075,16 +4706,32 @@ let currentWeekKey = "";
 let feedbackInput: HTMLTextAreaElement | null = null;
 let feedbackSubmit: HTMLButtonElement | null = null;
 let feedbackStatus: HTMLDivElement | null = null;
-let feedbackPermissionButton: HTMLButtonElement | null = null;
 let feedbackSubmitting = false;
+let wizardPanel: HTMLDivElement | null = null;
+let manaFillEl: HTMLDivElement | null = null;
+let manaValueEl: HTMLSpanElement | null = null;
+let spellRowEl: HTMLDivElement | null = null;
+let contractBannerEl: HTMLDivElement | null = null;
+let contractTextEl: HTMLDivElement | null = null;
+let contractPickerEl: HTMLDivElement | null = null;
+let pendingSpell: SpellId | null = null;
+let contractPickerKey = "";
+let coopWaveStartPending = false;
 const urlParams = new URLSearchParams(window.location.search);
 const requestedMode = urlParams.get(MODE_PARAM) ?? "";
+const mapIdParam = urlParams.get(MAP_ID_PARAM) ?? "";
+const coopRoleParam = (urlParams.get(ROLE_PARAM) ?? "") as "builder" | "wizard" | "";
+const coopRunParam = urlParams.get(RUN_ID_PARAM) ?? "";
 const testDayParam = urlParams.get(TEST_DAY_PARAM) ?? "";
 let gameMode: GameMode = "standard";
 if (requestedMode === DAILY_MODE) {
   gameMode = "daily";
 } else if (requestedMode === LEADERBOARD_MODE) {
   gameMode = "leaderboard";
+} else if (requestedMode === COOP_MODE) {
+  gameMode = "coop";
+} else if (mapIdParam) {
+  gameMode = "ugc";
 } else {
   try {
     if (localStorage.getItem(LEADERBOARD_FLAG_KEY) === "1") {
@@ -4099,6 +4746,14 @@ const dailyTestDay = testDayParam.toLowerCase();
 let dailyTestMode = false;
 let dailyAttemptUsed = false;
 let dailyChallengeConfig: DailyChallengeConfig | null = null;
+let currentMap: MapData | null = null;
+let currentMapId = mapIdParam || "";
+let coopRole: "builder" | "wizard" | "" = coopRoleParam || "";
+let coopRunId = coopRunParam || "";
+let coopLastSeq = 0;
+let coopPollTimer: number | null = null;
+let coopPendingEvents: CoopEvent[] = [];
+let dailyResetTimer: number | null = null;
 
 const formatWeekRange = (weekStart?: string, weekEnd?: string) => {
   if (!weekStart || !weekEnd) return "";
@@ -4124,9 +4779,70 @@ const formatDailyDate = (date?: string) => {
   return formatter.format(new Date(`${date}T00:00:00Z`));
 };
 
+const getSecondsUntilDailyReset = () => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: PST_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+  const second = Number(parts.find((part) => part.type === "second")?.value ?? "0");
+  const remaining = (23 - hour) * 3600 + (59 - minute) * 60 + (60 - second);
+  return Math.max(0, remaining);
+};
+
+const formatCountdown = (totalSeconds: number) => {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+};
+
+const startDailyResetCountdown = (subtitle: HTMLElement | null) => {
+  if (!subtitle) return;
+  const update = () => {
+    const remaining = getSecondsUntilDailyReset();
+    subtitle.textContent = `Resets in ${formatCountdown(remaining)}`;
+  };
+  update();
+  if (dailyResetTimer) {
+    window.clearInterval(dailyResetTimer);
+  }
+  dailyResetTimer = window.setInterval(update, 1000);
+};
+
+const getBoardCameraShift = () =>
+  gameMode === "standard" && !currentMap ? DEFAULT_BOARD_CAMERA_SHIFT : 0;
+
 const getActiveMapOverrides = () => {
-  if (gameMode !== "daily" || !dailyChallengeConfig) return undefined;
-  return { spawn: dailyChallengeConfig.spawn, exit: dailyChallengeConfig.exit };
+  if (currentMap) {
+    return { mapData: currentMap };
+  }
+  if (gameMode === "daily" && dailyChallengeConfig) {
+    return { spawn: dailyChallengeConfig.spawn, exit: dailyChallengeConfig.exit };
+  }
+  return undefined;
+};
+
+const isCoop = () => gameMode === "coop";
+const isCoopBuilder = () => gameMode === "coop" && coopRole === "builder";
+const isCoopWizard = () => gameMode === "coop" && coopRole === "wizard";
+
+const applyCoopRoleStyles = () => {
+  const body = document.body;
+  body.classList.toggle("coop-mode", isCoop());
+  body.classList.toggle("coop-wizard", isCoopWizard());
+  if (wizardPanel) {
+    const showWizard = isCoopWizard();
+    wizardPanel.classList.toggle("hidden", !showWizard);
+    wizardPanel.setAttribute("aria-hidden", showWizard ? "false" : "true");
+  }
 };
 
 const loadDailyChallengeStatus = async (testDay?: string) => {
@@ -4172,9 +4888,293 @@ const applyDailyChallengeConfig = (
   dailyAttemptUsed = !testMode && data.attemptUsed;
 };
 
+const loadMapById = async (mapId: string) => {
+  const response = await fetch(`/api/maps/${encodeURIComponent(mapId)}?ts=${Date.now()}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("map fetch failed");
+  }
+  const data = (await response.json()) as MapDetailResponse;
+  if (data.type !== "map") {
+    throw new Error("invalid map response");
+  }
+  return data.map;
+};
+
+const loadMapFromPost = async () => {
+  const response = await fetch(`/api/maps/from-post?ts=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    console.warn("post map fetch failed", response.status, errorBody);
+    throw new Error("post map fetch failed");
+  }
+  const data = (await response.json()) as MapDetailResponse;
+  if (data.type !== "map") {
+    console.warn("invalid map response", data);
+    throw new Error("invalid map response");
+  }
+  return data.map;
+};
+
+const recordMapPlay = async (mapId: string) => {
+  const payload: MapPlayRequest = { mapId };
+  try {
+    await fetch("/api/maps/play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Ignore map play errors.
+  }
+};
+
+const submitMapRun = async (state: GameState) => {
+  if (!currentMapId) return;
+  const payload: MapRunRequest = {
+    mapId: currentMapId,
+    status: state.phase === "victory" ? "victory" : "defeat",
+    waves: state.phase === "victory" ? MAX_WAVES : state.wave - 1,
+    score: calcScore(state),
+    hp: Math.max(0, state.lives),
+  };
+  try {
+    await fetch("/api/maps/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Ignore map run errors.
+  }
+};
+
+const loadCoopRun = async (runId: string, since = 0) => {
+  const response = await fetch(
+    `/api/coop/run?runId=${encodeURIComponent(runId)}&since=${since}`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    throw new Error("coop run fetch failed");
+  }
+  const data = (await response.json()) as CoopRunResponse;
+  if (data.type !== "coop-run" || data.status !== "ok") {
+    throw new Error("invalid coop run response");
+  }
+  return data;
+};
+
+const sendCoopEvent = async (event: CoopEventRequest) => {
+  const response = await fetch("/api/coop/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+  });
+  if (!response.ok) {
+    throw new Error("coop event failed");
+  }
+  return (await response.json()) as CoopEventResponse;
+};
+
+const applyCoopEvent = (event: CoopEvent) => {
+  coopLastSeq = Math.max(coopLastSeq, event.seq);
+  if (!state || !runtime) return;
+  switch (event.type) {
+    case "build": {
+      const payload = event.payload as {
+        id: number;
+        kind: "tower" | "bank";
+        towerId?: string;
+        x: number;
+        y: number;
+      };
+      if (!Number.isFinite(payload.id) || payload.x == null || payload.y == null) return;
+      if (getStructureAt(runtime, payload.x, payload.y)) return;
+      if (!canPlaceStructure(runtime, payload.x, payload.y)) return;
+      if (payload.kind === "bank") {
+        if (state.gold < BANK_DEFINITION.cost) return;
+        state.gold -= BANK_DEFINITION.cost;
+        const bank: BankInstance = {
+          id: payload.id,
+          kind: "bank",
+          x: payload.x,
+          y: payload.y,
+          spent: BANK_DEFINITION.cost,
+        };
+        addStructure(state, runtime, bank);
+      } else {
+        const towerId = payload.towerId ?? "basic";
+        const towerDef = getTower(towerId);
+        const tier = towerDef.tiers[0];
+        if (state.gold < tier.cost) return;
+        state.gold -= tier.cost;
+        const tower: TowerInstance = {
+          id: payload.id,
+          kind: "tower",
+          towerId: towerDef.id,
+          tier: 0,
+          cooldown: 0,
+          recoil: 0,
+          targetMode: "first",
+          x: payload.x,
+          y: payload.y,
+          spent: tier.cost,
+          roundDamage: 0,
+          lastRoundDamage: 0,
+        };
+        addStructure(state, runtime, tower);
+      }
+      state.nextId = Math.max(state.nextId, payload.id + 1);
+      break;
+    }
+    case "upgrade": {
+      const payload = event.payload as { id: number };
+      const structure = state.structures.find((item) => item.id === payload.id);
+      if (!structure || structure.kind !== "tower") return;
+      const towerDef = getTower(structure.towerId);
+      if (structure.tier >= towerDef.tiers.length - 1) return;
+      const nextTier = towerDef.tiers[structure.tier + 1];
+      if (state.gold < nextTier.cost) return;
+      state.gold -= nextTier.cost;
+      structure.tier += 1;
+      structure.spent += nextTier.cost;
+      break;
+    }
+    case "sell": {
+      const payload = event.payload as { id: number };
+      const structure = state.structures.find((item) => item.id === payload.id);
+      if (!structure) return;
+      state.gold += getSellValue(state, structure);
+      state.sellsThisWave += 1;
+      removeStructure(state, runtime, structure);
+      if (activeSelection?.id === payload.id) {
+        activeSelection = null;
+      }
+      break;
+    }
+    case "target": {
+      const payload = event.payload as { id: number; targetMode: TargetMode };
+      const structure = state.structures.find((item) => item.id === payload.id);
+      if (!structure || structure.kind !== "tower") return;
+      if (!TARGET_MODES.includes(payload.targetMode)) return;
+      structure.targetMode = payload.targetMode;
+      break;
+    }
+    case "start-wave": {
+      const payload = event.payload as { contractId?: string | null };
+      startWave(state, payload.contractId ?? null);
+      break;
+    }
+    case "spell": {
+      const payload = event.payload as { spellId: SpellId; x: number; y: number };
+      if (state.phase !== "wave") return;
+      applySpellCast(state, runtime, payload.spellId, payload.x, payload.y, true);
+      break;
+    }
+    case "contract": {
+      const payload = event.payload as { contractId?: string | null; wave?: number };
+      if (state.phase !== "prep") return;
+      if (payload.wave && payload.wave !== state.wave) return;
+      const contract = payload.contractId ? getContract(payload.contractId) : null;
+      applyContractSelection(state, contract);
+      break;
+    }
+    default:
+      break;
+  }
+  updateHud(state, runtime);
+  renderActionTray(state, activeSelection, activeBuildSelection);
+};
+
+const sendAndApplyCoopEvent = async (event: CoopEventRequest) => {
+  if (!coopRunId) return;
+  const response = await sendCoopEvent({ ...event, guestId: getGuestId() });
+  if (response.status !== "ok" || !response.nextSeq) {
+    throw new Error("coop event rejected");
+  }
+  const applied: CoopEvent = {
+    seq: response.nextSeq,
+    type: event.type,
+    tick: event.tick,
+    payload: event.payload ?? {},
+  };
+  coopLastSeq = Math.max(coopLastSeq, response.nextSeq);
+  applyCoopEvent(applied);
+};
+
+const applyPendingCoopEvents = () => {
+  if (!coopPendingEvents.length) return;
+  coopPendingEvents.sort((a, b) => a.seq - b.seq);
+  const remaining: CoopEvent[] = [];
+  for (const event of coopPendingEvents) {
+    if (event.tick && event.tick > state.tick) {
+      remaining.push(event);
+      continue;
+    }
+    applyCoopEvent(event);
+  }
+  coopPendingEvents = remaining;
+};
+
+const startCoopPolling = () => {
+  if (coopPollTimer || !coopRunId) return;
+  const poll = async () => {
+    if (!coopRunId) return;
+    try {
+      const run = await loadCoopRun(coopRunId, coopLastSeq);
+      if (run.events && run.events.length) {
+        coopPendingEvents = coopPendingEvents.concat(run.events);
+      }
+      if (run.nextSeq) {
+        coopLastSeq = Math.max(coopLastSeq, run.nextSeq);
+      }
+      if (!coopRole && run.role) {
+        coopRole = run.role;
+        applyCoopRoleStyles();
+      }
+    } catch {
+      // Ignore poll errors.
+    }
+  };
+  void poll();
+  coopPollTimer = window.setInterval(poll, 1200);
+};
+
+const selectContract = async (contractId: string | null) => {
+  if (!isCoopWizard()) return;
+  const contract = contractId ? getContract(contractId) : null;
+  applyContractSelection(state, contract);
+  updateContractPicker(state);
+  updateContractBanner(state);
+  if (!coopRunId) return;
+  try {
+    await sendAndApplyCoopEvent({
+      runId: coopRunId,
+      role: "wizard",
+      type: "contract",
+      tick: state.tick,
+      payload: { contractId: contractId ?? "", wave: state.wave },
+    });
+  } catch {
+    showToast("Contract sync failed.");
+  }
+};
+
 
 const setupInteraction = () => {
   const canvas = runtime.view.canvas;
+  canvas.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      const direction = Math.sign(event.deltaY);
+      const scale = direction > 0 ? 0.9 : 1.1;
+      runtime.view.zoom = clamp(runtime.view.zoom * scale, runtime.view.minZoom, runtime.view.maxZoom);
+      applyCameraZoom(runtime);
+    },
+    { passive: false }
+  );
   canvas.addEventListener("click", (event) => {
     const rect = canvas.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -4190,6 +5190,39 @@ const setupInteraction = () => {
     const gridY = Math.floor(point.z);
 
     if (gridX < 0 || gridY < 0 || gridX >= runtime.baseMap.width || gridY >= runtime.baseMap.height) {
+      return;
+    }
+
+    if (isCoopWizard()) {
+      if (pendingSpell) {
+        const spellId = pendingSpell;
+        pendingSpell = null;
+        updateSpellButtons(state);
+        const spell = getSpell(spellId);
+        if (state.phase !== "wave") {
+          showToast("Cast spells during the wave.");
+          return;
+        }
+        if (state.mana < spell.manaCost) {
+          showToast("Not enough mana.");
+          return;
+        }
+        const targetX = gridX + 0.5;
+        const targetY = gridY + 0.5;
+        void (async () => {
+          try {
+            await sendAndApplyCoopEvent({
+              runId: coopRunId,
+              role: "wizard",
+              type: "spell",
+              tick: state.tick,
+              payload: { spellId, x: targetX, y: targetY },
+            });
+          } catch {
+            showToast("Spell failed.");
+          }
+        })();
+      }
       return;
     }
 
@@ -4225,6 +5258,23 @@ const setupInteraction = () => {
         showToast("Not enough gold.");
         return;
       }
+      if (isCoopBuilder()) {
+        const id = state.nextId++;
+        void (async () => {
+          try {
+            await sendAndApplyCoopEvent({
+              runId: coopRunId,
+              role: "builder",
+              type: "build",
+              tick: state.tick,
+              payload: { id, kind: "tower", towerId: towerDef.id, x: gridX, y: gridY },
+            });
+          } catch {
+            showToast("Build failed.");
+          }
+        })();
+        return;
+      }
       const tower: TowerInstance = {
         id: state.nextId++,
         kind: "tower",
@@ -4248,6 +5298,23 @@ const setupInteraction = () => {
     if (activeBuildSelection.kind == "bank") {
       if (state.gold < BANK_DEFINITION.cost) {
         showToast("Not enough gold.");
+        return;
+      }
+      if (isCoopBuilder()) {
+        const id = state.nextId++;
+        void (async () => {
+          try {
+            await sendAndApplyCoopEvent({
+              runId: coopRunId,
+              role: "builder",
+              type: "build",
+              tick: state.tick,
+              payload: { id, kind: "bank", x: gridX, y: gridY },
+            });
+          } catch {
+            showToast("Build failed.");
+          }
+        })();
         return;
       }
       const bank: BankInstance = {
@@ -4348,9 +5415,17 @@ const setupInteraction = () => {
   feedbackInput = document.getElementById("feedback-input") as HTMLTextAreaElement | null;
   feedbackSubmit = document.getElementById("feedback-submit") as HTMLButtonElement | null;
   feedbackStatus = document.getElementById("feedback-status") as HTMLDivElement | null;
-  feedbackPermissionButton = document.getElementById("feedback-permission") as HTMLButtonElement | null;
+  wizardPanel = document.getElementById("wizard-panel") as HTMLDivElement | null;
+  manaFillEl = document.getElementById("mana-fill") as HTMLDivElement | null;
+  manaValueEl = document.getElementById("mana-value") as HTMLSpanElement | null;
+  spellRowEl = document.getElementById("spell-row") as HTMLDivElement | null;
+  contractBannerEl = document.getElementById("contract-banner") as HTMLDivElement | null;
+  contractTextEl = document.getElementById("contract-text") as HTMLDivElement | null;
+  contractPickerEl = document.getElementById("contract-picker") as HTMLDivElement | null;
+  renderSpellButtons();
+  applyCoopRoleStyles();
 
-  const lockRestart = gameMode === "daily";
+  const lockRestart = gameMode === "daily" || gameMode === "coop";
   if (lockRestart && menuSelect) {
     const restartOption = menuSelect.querySelector('option[value="restart"]');
     if (restartOption) {
@@ -4376,18 +5451,33 @@ const setupInteraction = () => {
 
   const startNextRound = () => {
     if (state.phase != "prep") return;
-    buildSpawnQueue(state);
-    state.phase = "wave";
-    state.phaseTimer = 0;
+    if (isCoopBuilder()) {
+      if (!state.contractPicked) {
+        showToast("Wizard must pick a contract.");
+        return;
+      }
+      void (async () => {
+        try {
+          await sendAndApplyCoopEvent({
+            runId: coopRunId,
+            role: "builder",
+            type: "start-wave",
+            tick: state.tick,
+            payload: { contractId: state.activeContract?.id ?? "" },
+          });
+        } catch {
+          showToast("Wave start failed.");
+        }
+      })();
+      return;
+    }
+    if (!isCoop()) {
+      startWave(state, null);
+    }
   };
 
   playAgainButton?.addEventListener("click", () => {
-    if (gameMode === "daily") {
-      window.location.assign("training.html");
-      return;
-    }
-    hideEndModal();
-    initGame(state.seed, getActiveMapOverrides());
+    window.location.assign("training.html");
   });
 
   feedbackSubmit?.addEventListener("click", async () => {
@@ -4426,32 +5516,9 @@ const setupInteraction = () => {
     }
   });
 
-  feedbackPermissionButton?.addEventListener("click", async () => {
-    if (!feedbackStatus || !feedbackPermissionButton) return;
-    feedbackPermissionButton.disabled = true;
-    feedbackPermissionButton.textContent = "Requesting...";
-    try {
-      const granted = await requestRunAsUser();
-      if (granted) {
-        feedbackStatus.textContent = "Permission granted. Try posting again.";
-        feedbackStatus.classList.remove("warning");
-        showToast("Comment permission granted");
-      } else {
-        feedbackStatus.textContent = "Permission not granted. Please allow and try again.";
-        feedbackStatus.classList.add("warning");
-        showToast("Comment permission not granted");
-      }
-    } catch {
-      feedbackStatus.textContent = "Permission request unavailable.";
-      feedbackStatus.classList.add("warning");
-      showToast("Permission request failed");
-    } finally {
-      feedbackPermissionButton.disabled = false;
-      feedbackPermissionButton.textContent = "Grant Comment Permission";
-    }
-  });
 
   speedToggleButton?.addEventListener("click", () => {
+    if (isCoop()) return;
     if (state.phase != "wave") return;
     speedMultiplier = speedMultiplier === 1 ? 2 : 1;
     updateSpeedToggle(state);
@@ -4464,7 +5531,7 @@ const setupInteraction = () => {
 
   menuSelect?.addEventListener("change", () => {
     if (menuSelect.value == "restart") {
-      if (gameMode === "daily") {
+      if (gameMode === "daily" || gameMode === "coop") {
         menuSelect.value = "";
         return;
       }
@@ -4496,18 +5563,47 @@ const setupInteraction = () => {
 };
 
 const tick = () => {
+  state.tick += 1;
+  if (isCoop()) {
+    applyPendingCoopEvents();
+  }
   if (state.phase == "prep") {
     state.phaseTimer = Math.max(0, state.phaseTimer - TICK_RATE);
     if (state.phaseTimer <= 0) {
-      buildSpawnQueue(state);
-      state.phase = "wave";
-      state.phaseTimer = 0;
+      if (isCoop()) {
+        if (isCoopBuilder() && !coopWaveStartPending) {
+          if (!state.contractPicked) {
+            return;
+          }
+          coopWaveStartPending = true;
+          void (async () => {
+            try {
+              await sendAndApplyCoopEvent({
+                runId: coopRunId,
+                role: "builder",
+                type: "start-wave",
+                tick: state.tick,
+                payload: { contractId: state.activeContract?.id ?? "" },
+              });
+            } catch {
+              coopWaveStartPending = false;
+              showToast("Wave start failed.");
+            }
+          })();
+        }
+        return;
+      }
+      startWave(state, null);
     }
   }
 
   if (state.phase == "wave") {
     const waveSpeed = speedMultiplier;
+    state.mana = clamp(state.mana + state.manaRegen * TICK_RATE * waveSpeed, 0, state.maxMana);
     updateWaveState(state, runtime, TICK_RATE * waveSpeed);
+  }
+  if (state.phase == "prep") {
+    state.mana = clamp(state.mana + state.manaRegen * TICK_RATE, 0, state.maxMana);
   }
 
   updateHud(state, runtime);
@@ -4536,8 +5632,12 @@ const animate = (timestamp: number) => {
   window.requestAnimationFrame(animate);
 };
 
-const initGame = (seed: number, overrides?: { spawn?: Point; exit?: Point }) => {
-  state = makeInitialState(seed);
+const initGame = (seed: number, overrides?: { spawn?: Point; exit?: Point; mapData?: MapData | null }) => {
+  const modifiers = overrides?.mapData
+    ? { hpMult: overrides.mapData.hpMult, speedMult: overrides.mapData.speedMult }
+    : { hpMult: currentMap?.hpMult, speedMult: currentMap?.speedMult };
+  state = makeInitialState(seed, modifiers);
+  prepareContractsForWave(state);
   activeSelection = null;
   activeBuildSelection = { kind: "none" };
   endModalShown = false;
@@ -4545,12 +5645,15 @@ const initGame = (seed: number, overrides?: { spawn?: Point; exit?: Point }) => 
   endSceneActive = false;
   hideEndScene();
   speedMultiplier = 1;
+  pendingSpell = null;
+  coopWaveStartPending = false;
   runtime.structureByCell.clear();
   runtime.baseMap = createBaseMap(overrides);
   runtime.airPath = buildAirPath(runtime.baseMap);
   rebuildPath(runtime);
   updateMapMarkers(runtime);
-  runtime.view.cameraTarget.set(runtime.baseMap.width / 2, 0, runtime.baseMap.height / 2);
+  const shift = getBoardCameraShift();
+  runtime.view.cameraTarget.set(runtime.baseMap.width / 2, 0, runtime.baseMap.height / 2 + shift);
   applyCameraZoom(runtime);
   updateBuildBar(state, activeBuildSelection);
   renderActionTray(state, null, activeBuildSelection);
@@ -4584,6 +5687,46 @@ const boot = async () => {
   if (!canvas) return;
 
   let dailySeed: number | null = null;
+  let mapSeed: number | null = null;
+  if (gameMode === "ugc") {
+    try {
+      currentMap = currentMapId ? await loadMapById(currentMapId) : await loadMapFromPost();
+      currentMapId = currentMap.id;
+      await recordMapPlay(currentMapId);
+    } catch (error) {
+      console.warn("UGC map load failed", error);
+      showToast("Map unavailable");
+      return;
+    }
+  } else if (gameMode === "standard") {
+    try {
+      const postMap = await loadMapFromPost();
+      currentMap = postMap;
+      currentMapId = postMap.id;
+      gameMode = "ugc";
+      await recordMapPlay(currentMapId);
+    } catch (error) {
+      console.warn("Post map load skipped", error);
+      // Not a map post; ignore.
+    }
+  }
+  if (gameMode === "coop" && coopRunId) {
+    try {
+      const run = await loadCoopRun(coopRunId, 0);
+      mapSeed = run.seed ?? null;
+      if (run.mapId) {
+        currentMap = await loadMapById(run.mapId);
+        currentMapId = run.mapId;
+      }
+      if (!coopRole && run.role) {
+        coopRole = run.role;
+      }
+      coopLastSeq = run.nextSeq ?? 0;
+      coopPendingEvents = run.events ?? [];
+    } catch {
+      showToast("Co-op run unavailable");
+    }
+  }
   if (gameMode === "daily") {
     try {
       const dailyData = dailyTestDay
@@ -4604,13 +5747,19 @@ const boot = async () => {
   window.addEventListener("resize", () => resizeCanvas(runtime));
 
   const daily = await loadDaily();
-  const seed = dailySeed ?? daily.seed;
+  const seed = mapSeed ?? dailySeed ?? daily.seed;
   initGame(seed, getActiveMapOverrides());
+  if (gameMode === "coop" && coopPendingEvents.length) {
+    applyPendingCoopEvents();
+  }
 
   if (gameMode === "leaderboard" || (gameMode === "daily" && dailyAttemptUsed && !dailyTestMode)) {
     showLeaderboardOnly();
   }
   setupInteraction();
+  if (gameMode === "coop" && coopRunId) {
+    startCoopPolling();
+  }
   window.requestAnimationFrame(animate);
 };
 

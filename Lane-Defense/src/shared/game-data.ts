@@ -72,7 +72,7 @@ export interface WaveDefinition {
 }
 
 export const GRID_WIDTH = 9;
-export const GRID_HEIGHT = 15;
+export const GRID_HEIGHT = 13;
 export const PATH_THICKNESS = 1;
 export const MAX_WAVES = 10;
 

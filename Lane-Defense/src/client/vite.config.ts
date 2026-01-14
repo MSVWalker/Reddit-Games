@@ -11,6 +11,8 @@ export default defineConfig({
       input: {
         splash: "splash.html",
         training: "training.html",
+        editor: "editor.html",
+        browser: "browser.html",
         game: "game.html",
       },
       output: {

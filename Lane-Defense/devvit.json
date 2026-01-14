@@ -11,6 +11,12 @@
       "training": {
         "entry": "training.html"
       },
+      "editor": {
+        "entry": "editor.html"
+      },
+      "browser": {
+        "entry": "browser.html"
+      },
       "game": {
         "entry": "game.html"
       }
@@ -24,10 +30,11 @@
     "entry": "index.cjs"
   },
   "permissions": {
+    "media": true,
     "redis": true,
     "reddit": {
       "enable": true,
-      "asUser": ["SUBMIT_COMMENT"]
+      "asUser": ["SUBMIT_COMMENT", "SUBMIT_POST"]
     }
   },
   "dev": {

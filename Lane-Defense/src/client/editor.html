@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, height=device-height, user-scalable=0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Lane Defense Map Editor</title>
+  <link rel="stylesheet" href="editor/editor.css" />
+</head>
+
+<body class="editor-body">
+  <div class="editor-shell">
+    <header class="editor-header">
+      <div>
+        <h1>Map Editor</h1>
+        <p>Game Board tiles are blue and buildable. Pathing uses the shortest route from Spawn to Exit.</p>
+      </div>
+      <button class="editor-link" id="back-training">Back</button>
+    </header>
+
+    <div class="editor-tools">
+      <button class="tool-button active" data-tool="path">Game Board</button>
+      <button class="tool-button" data-tool="erase">Unbuildable</button>
+      <button class="tool-button" data-tool="spawn">Spawn</button>
+      <button class="tool-button" data-tool="exit">Exit</button>
+      <button class="tool-button" id="undo-button">Undo</button>
+      <button class="tool-button" id="validate-button">Validate</button>
+    </div>
+
+    <div class="editor-content">
+      <div class="editor-canvas-wrap">
+        <canvas id="editor-canvas"></canvas>
+        <div class="editor-validate" id="editor-validate" aria-hidden="true"></div>
+      </div>
+
+      <aside class="editor-sidebar">
+        <label>
+          Title
+          <input type="text" id="map-title" placeholder="Map title" maxlength="60" />
+        </label>
+        <label>
+          Description
+          <textarea id="map-description" rows="3" maxlength="200"
+            placeholder="Description (optional)."></textarea>
+        </label>
+        <label>
+          HP Multiplier
+          <select id="hp-mult"></select>
+        </label>
+        <label>
+          Speed Multiplier
+          <select id="speed-mult"></select>
+        </label>
+        <div class="editor-stats">
+          <div><span>Board Tiles</span><strong id="path-count">0</strong></div>
+          <div><span>Spawn</span><strong id="spawn-pos">--</strong></div>
+          <div><span>Exit</span><strong id="exit-pos">--</strong></div>
+        </div>
+        <div class="editor-actions">
+          <button class="editor-primary" id="save-draft">Save Draft</button>
+          <button class="editor-primary" id="publish-map">Publish</button>
+        </div>
+        <div class="editor-status" id="editor-status"></div>
+      </aside>
+    </div>
+  </div>
+
+  <script type="module" src="editor/editor.ts" defer></script>
+</body>
+
+</html>

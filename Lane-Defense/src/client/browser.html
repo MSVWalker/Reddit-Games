@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, height=device-height, user-scalable=0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Lane Defense Map Browser</title>
+  <link rel="stylesheet" href="browser/browser.css" />
+</head>
+
+<body class="browser-body">
+  <div class="browser-shell">
+    <header class="browser-header">
+      <div>
+        <h1>Map Browser</h1>
+        <p>Browse community maps. Sorted by trend, plays, or newest.</p>
+      </div>
+      <button class="browser-link" id="back-training">Back</button>
+    </header>
+
+    <div class="browser-tabs">
+      <button class="tab-button active" data-sort="trending">Trending</button>
+      <button class="tab-button" data-sort="most">Most Played</button>
+      <button class="tab-button" data-sort="new">New</button>
+    </div>
+
+    <div class="browser-list" id="map-list"></div>
+    <div class="browser-status" id="browser-status"></div>
+  </div>
+
+  <script type="module" src="browser/browser.ts" defer></script>
+</body>
+
+</html>
